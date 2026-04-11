@@ -1,0 +1,36 @@
+Base Source Code Reference — File listing
+==========================================
+Total: 22 files (1 README, 1 FILES.txt, 20 source files)
+
+Doc theo thu tu:
+
+ 1. README.md                                           — Huong dan tong quan
+ 2. src/core/config.py                                  — pydantic-settings (.env)
+ 3. src/core/logging_config.py                          — Logging (RotatingFile + GMT+7)
+ 4. src/db/mongo.py                                     — Motor + Umongo singleton
+ 5. src/db/base_model.py                                — TenantAwareDocument (multi-tenant base)
+ 6. src/api/shared/schemas.py                           — Operation, Resource enums
+ 7. src/api/shared/common_utils.py                      — api_response(), validate_id_format()
+ 8. src/api/shared/exceptions.py                        — Custom exception hierarchy
+ 9. src/api/shared/tool/convert_object_id.py            — MongoDB ObjectId converter
+10. src/api/shared/tool/datetime_convert.py             — DateTime utilities (UTC + GMT+7)
+11. src/api/auth/jwt_manager.py                         — JWT create/decode + httpOnly cookies
+12. src/api/auth/dependencies.py                        — get_current_user (FastAPI Depends)
+13. src/api/auth/permissions.py                         — RBAC: has_permission decorator + enums
+14. src/api/example_feature/product_models.py           — Example: MongoDB model (Product)
+15. src/api/example_feature/product_schemas.py          — Example: Pydantic schemas
+16. src/api/example_feature/product_utils.py            — Example: Business logic
+17. src/api/example_feature/product_views.py            — Example: API endpoints (thin views)
+18. src/api/main_router.py                              — Router aggregation
+19. src/main.py                                         — FastAPI entry point + middleware
+20. src/services/shared/abstractions/singleton.py       — Thread-safe Singleton base class
+21. src/services/shared/redis_client.py                 — Redis singleton (dual pools, pub/sub, lock)
+22. src/services/example_worker/example_worker.py       — Standalone worker process template
+
+Dependencies (pyproject.toml):
+    fastapi, uvicorn[standard], pydantic-settings, python-dotenv
+    motor, umongo, pymongo (bson)
+    python-jose[cryptography], bcrypt, passlib[bcrypt]
+    redis[hiredis]
+    pytz, python-dateutil
+    uvloop (optional, cho workers)
