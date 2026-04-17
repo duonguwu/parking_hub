@@ -131,7 +131,7 @@ PUBLIC_PATH_PREFIXES = (
     "/docs",
     "/openapi.json",
     "/redoc",
-    "/garages/nearby",  # Public search
+    "/garage/search_nearby",  # Public search
 )
 
 
