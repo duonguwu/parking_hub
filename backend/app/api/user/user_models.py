@@ -28,9 +28,10 @@ class UserModel(TenantAwareDocument):
     # { position, shift }
 
     # For center/chain managers managing multiple tenants
-    allowed_tenant_ids = fields.ListField(fields.StringField(), default=None)
+    # Stored as list of strings, but using DictField to allow None
+    allowed_tenant_ids = fields.ListField(fields.StringField(), default=list)
 
-    last_login = fields.AwareDateTimeField(default=None)
+    last_login = fields.AwareDateTimeField(allow_none=True, default=None)
 
     class Meta(TenantAwareDocument.Meta):
         abstract = False

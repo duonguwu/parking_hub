@@ -19,7 +19,7 @@ def format_garage(doc) -> dict:
         data = doc.dump()
 
     return {
-        "id": str(data.get("_id", "")),
+        "id": str(data.get("_id") or data.get("id") or ""),
         "tenant_id": data.get("tenant_id", ""),
         "name": data.get("name", ""),
         "slug": data.get("slug", ""),

@@ -70,7 +70,7 @@ class TenantAwareDocument(Document):
 
         if current_user.get("tenant_id") != "super_admin":
             allowed_tenants = current_user.get("allowed_tenant_ids")
-            if allowed_tenants is not None:
+            if allowed_tenants:  # non-empty list only ([] is falsy → fall through to single tenant)
                 filter_dict["tenant_id"] = {"$in": allowed_tenants}
             else:
                 filter_dict["tenant_id"] = current_user.get("tenant_id")

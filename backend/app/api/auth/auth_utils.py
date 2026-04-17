@@ -5,8 +5,8 @@ Auth Utils — Business logic for authentication, user creation, password hashin
 import logging
 from typing import Optional, Dict, Any
 
+import bcrypt
 from fastapi import HTTPException
-from passlib.context import CryptContext
 
 from app.api.auth.jwt_manager import create_access_token, create_refresh_token
 from app.api.auth.permissions import get_permissions_for_role
@@ -15,15 +15,18 @@ from app.api.shared.tool.convert_object_id import convert_mongo_object_id
 
 logger = logging.getLogger(__name__)
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hash password using bcrypt."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a password against its hash."""
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except Exception:
+        return False
 
 
 def _build_token_payload(user_doc: dict) -> dict:

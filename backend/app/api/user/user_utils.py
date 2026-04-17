@@ -18,7 +18,7 @@ def format_user(doc) -> dict:
     else:
         data = doc.dump()
     return {
-        "id": str(data.get("_id", "")),
+        "id": str(data.get("_id") or data.get("id") or ""),
         "tenant_id": data.get("tenant_id", ""),
         "username": data.get("username", ""),
         "email": data.get("email", ""),
@@ -75,24 +75,28 @@ async def create_staff_user(data: dict, current_user: dict) -> dict:
     if await get_user_by_email(data["email"]):
         raise HTTPException(status_code=409, detail="Email already exists")
 
-    doc = UserModel(
-        tenant_id=current_user["tenant_id"],
-        username=data["username"],
-        email=data["email"],
-        phone=data.get("phone", ""),
-        password_hash=hash_password(data["password"]),
-        name=data["name"],
-        role=role,
-        is_active=True,
-        staff_profile=data.get("staff_profile", {}),
-        created_at=get_current_time(),
-        updated_at=get_current_time(),
-        created_by=current_user.get("username", "system"),
-        updated_by=current_user.get("username", "system"),
-    )
-    await doc.commit()
+    # Use raw insert to bypass umongo DictField + marshmallow v4 incompatibility
+    doc_data = {
+        "tenant_id": current_user["tenant_id"],
+        "username": data["username"],
+        "email": data["email"],
+        "phone": data.get("phone", ""),
+        "password_hash": hash_password(data["password"]),
+        "name": data["name"],
+        "role": role,
+        "is_active": True,
+        "staff_profile": data.get("staff_profile", {}),
+        "customer_profile": {},
+        "allowed_tenant_ids": [],
+        "last_login": None,
+        "created_at": get_current_time(),
+        "updated_at": get_current_time(),
+        "created_by": current_user.get("username", "system"),
+        "updated_by": current_user.get("username", "system"),
+    }
+    insert_result = await UserModel.collection.insert_one(doc_data)
 
-    result = await UserModel.collection.find_one({"_id": doc.pk})
+    result = await UserModel.collection.find_one({"_id": insert_result.inserted_id})
     return format_user(result)
 
 
