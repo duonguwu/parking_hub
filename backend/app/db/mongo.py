@@ -36,7 +36,9 @@ def init_mongo() -> MotorAsyncIOInstance:
     global _motor_client
 
     if _motor_client is None:
-        _motor_client = AsyncIOMotorClient(settings.MONGO_URI)
+        # tz_aware=True → datetimes returned from MongoDB are timezone-aware (UTC).
+        # Phase 2: matching/booking does arithmetic on datetimes; mixing naive & aware raises TypeError.
+        _motor_client = AsyncIOMotorClient(settings.MONGO_URI, tz_aware=True)
         _motor_client.get_io_loop = asyncio.get_running_loop
 
         db = _motor_client[settings.MONGO_DB]
