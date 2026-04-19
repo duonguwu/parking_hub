@@ -44,6 +44,17 @@ async def lifespan(app: FastAPI):
         from app.api.auth.auth_utils import seed_super_admin
         await seed_super_admin()
 
+        # 4. Seed service type catalog (Phase 2)
+        from app.api.service_type.service_type_utils import seed_default_service_types
+        await seed_default_service_types()
+
+        # 5. Connect Redis (best-effort — matching engine can degrade without cache)
+        from app.services.shared.redis_client import redis_client
+        try:
+            await redis_client.connect()
+        except Exception as e:
+            logger.warning(f"Redis not available — continuing without cache: {e}")
+
         logger.info("🚀 WashMind Backend started successfully")
 
     except Exception as e:
@@ -55,6 +66,21 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ──
     try:
         logger.info("Shutting down services...")
+        from app.services.shared.redis_client import redis_client
+        from app.services.osm.osm_client import osm_client
+        from app.services.weather.weather_service import weather_service
+        try:
+            await redis_client.disconnect()
+        except Exception:
+            pass
+        try:
+            await osm_client.close()
+        except Exception:
+            pass
+        try:
+            await weather_service.close()
+        except Exception:
+            pass
         close_mongo()
         logger.info("Shutdown completed")
     except Exception as e:
@@ -89,6 +115,47 @@ async def ensure_indexes():
         # Vehicles
         await VehicleModel.collection.create_index("owner_user_id")
         await VehicleModel.collection.create_index("license_plate", unique=True)
+
+        # ── Phase 2 collections ──
+        from app.api.service_type.service_type_models import ServiceTypeModel
+        from app.api.garage_service.garage_service_models import GarageServiceModel
+        from app.api.booking.booking_models import BookingModel
+        from app.api.capacity.capacity_models import CapacitySnapshotModel
+        from app.api.search_log.search_log_models import SearchLogModel
+
+        await ServiceTypeModel.collection.create_index("code", unique=True)
+        await ServiceTypeModel.collection.create_index("category")
+
+        await GarageServiceModel.collection.create_index(
+            [("garage_id", 1), ("service_type_code", 1)], unique=True
+        )
+
+        await BookingModel.collection.create_index("booking_code", unique=True)
+        await BookingModel.collection.create_index([("customer_id", 1), ("status", 1)])
+        await BookingModel.collection.create_index([("garage_id", 1), ("status", 1)])
+        await BookingModel.collection.create_index(
+            [("tenant_id", 1), ("status", 1), ("requested_time", 1)]
+        )
+        await BookingModel.collection.create_index([("created_at", -1)])
+
+        await CapacitySnapshotModel.collection.create_index(
+            [("garage_id", 1), ("timestamp", -1)]
+        )
+        await CapacitySnapshotModel.collection.create_index(
+            [("garage_id", 1), ("hour_of_day", 1), ("day_of_week", 1)]
+        )
+        # TTL: 90 days
+        await CapacitySnapshotModel.collection.create_index(
+            "created_at", expireAfterSeconds=90 * 86400
+        )
+
+        await SearchLogModel.collection.create_index([("created_at", -1)])
+        await SearchLogModel.collection.create_index([("customer_id", 1), ("created_at", -1)])
+        # TTL: 180 days
+        await SearchLogModel.collection.create_index(
+            "created_at", expireAfterSeconds=180 * 86400,
+            name="ttl_created_at"
+        )
 
         logger.info("✅ MongoDB indexes ensured")
     except Exception as e:
