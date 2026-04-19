@@ -53,9 +53,34 @@ async def client():
     await GarageModel.collection.create_index([("location", "2dsphere")])
     await VehicleModel.collection.create_index("license_plate", unique=True)
 
-    # 4. Seed super admin
+    # Phase 2 collections
+    from app.api.service_type.service_type_models import ServiceTypeModel
+    from app.api.garage_service.garage_service_models import GarageServiceModel
+    from app.api.booking.booking_models import BookingModel
+    from app.api.capacity.capacity_models import CapacitySnapshotModel
+    from app.api.search_log.search_log_models import SearchLogModel
+    await ServiceTypeModel.collection.create_index("code", unique=True)
+    await GarageServiceModel.collection.create_index(
+        [("garage_id", 1), ("service_type_code", 1)], unique=True,
+    )
+    await BookingModel.collection.create_index("booking_code", unique=True)
+    await CapacitySnapshotModel.collection.create_index(
+        [("garage_id", 1), ("timestamp", -1)]
+    )
+    await SearchLogModel.collection.create_index([("created_at", -1)])
+
+    # 4. Seed super admin + service types
     from app.api.auth.auth_utils import seed_super_admin
+    from app.api.service_type.service_type_utils import seed_default_service_types
     await seed_super_admin()
+    await seed_default_service_types()
+
+    # Connect Redis (best-effort)
+    from app.services.shared.redis_client import redis_client
+    try:
+        await redis_client.connect()
+    except Exception:
+        pass
 
     # 5. Create test client (follow_redirects=False, no cookie persistence)
     transport = ASGITransport(app=app)
@@ -65,6 +90,13 @@ async def client():
     # 6. Cleanup: drop test DB
     await motor_client.drop_database("washmind_test")
     close_mongo()
+
+    # Disconnect Redis
+    from app.services.shared.redis_client import redis_client
+    try:
+        await redis_client.disconnect()
+    except Exception:
+        pass
 
 
 # ── Helper: login and get cookies ────────────────────────────────
@@ -138,4 +170,56 @@ async def registered_garage(client: AsyncClient, garage_owner_data: dict) -> dic
     return {
         "response": resp.json(),
         "cookies": cookies,
+    }
+
+
+@pytest.fixture(scope="session")
+async def configured_garage(
+    client: AsyncClient, registered_garage: dict, superadmin_cookies: dict,
+) -> dict:
+    """
+    Garage with wash_premium service configured.
+    Returns {garage_id, cookies (owner), service_type_code, price}.
+    """
+    # Find garage_id
+    list_resp = await client.post(
+        "/garage/get_all", json={}, cookies=superadmin_cookies,
+    )
+    garages = list_resp.json()["data"]
+    assert len(garages) >= 1
+    # Pick the test garage (matches registered_garage's name)
+    test_g = next(g for g in garages if "Test Q3" in g.get("name", ""))
+    garage_id = test_g["id"]
+
+    # Configure wash_premium at 150000 VND
+    owner_cookies = registered_garage["cookies"]
+    upsert_resp = await client.post(
+        "/garage-services/upsert",
+        cookies=owner_cookies,
+        json={
+            "garage_id": garage_id,
+            "service_type_code": "wash_premium",
+            "price": 150000,
+            "estimated_duration_minutes": 30,
+        },
+    )
+    assert upsert_resp.status_code == 200, f"Upsert failed: {upsert_resp.text}"
+
+    # Also add wash_basic so customers with standard vehicles have options
+    await client.post(
+        "/garage-services/upsert",
+        cookies=owner_cookies,
+        json={
+            "garage_id": garage_id,
+            "service_type_code": "wash_basic",
+            "price": 80000,
+            "estimated_duration_minutes": 20,
+        },
+    )
+
+    return {
+        "garage_id": garage_id,
+        "cookies": owner_cookies,
+        "service_type_code": "wash_premium",
+        "price": 150000,
     }
