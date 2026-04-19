@@ -58,3 +58,27 @@ async def get_current_user(
         "permissions": payload.get("permissions", []),
         "allowed_tenant_ids": payload.get("allowed_tenant_ids"),
     }
+
+
+async def get_current_user_optional(
+    access_token: Optional[str] = Cookie(default=None),
+) -> Optional[Dict[str, Any]]:
+    """
+    Same as get_current_user but returns None instead of raising 401
+    when no/invalid cookie. Use for endpoints where auth is optional
+    (public search with personalization if logged in).
+    """
+    if not access_token:
+        return None
+    payload = decode_token(access_token, expected_type="access")
+    if not payload or not payload.get("sub"):
+        return None
+    return {
+        "user_id": payload.get("sub"),
+        "username": payload.get("username", ""),
+        "name": payload.get("name", ""),
+        "tenant_id": payload.get("tenant_id", ""),
+        "role": payload.get("role", ""),
+        "permissions": payload.get("permissions", []),
+        "allowed_tenant_ids": payload.get("allowed_tenant_ids"),
+    }
