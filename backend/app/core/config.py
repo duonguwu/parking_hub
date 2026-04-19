@@ -34,6 +34,22 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
+    # ── Redis (Phase 2: locks, caching) ──────────────────────────
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_CACHE_TTL_SECONDS: int = 3600          # 1h default
+    REDIS_LOCK_TIMEOUT_SECONDS: int = 10
+
+    # ── OSM Routing (Phase 2) ────────────────────────────────────
+    # Public demo OSRM — rate-limited, use self-hosted for prod.
+    OSRM_BASE_URL: str = "https://router.project-osrm.org"
+    OSM_ROUTE_CACHE_TTL_SECONDS: int = 3600
+    OSM_HTTP_TIMEOUT_SECONDS: float = 5.0
+
+    # ── Weather (Phase 2) ────────────────────────────────────────
+    OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com/v1/forecast"
+    WEATHER_CACHE_TTL_SECONDS: int = 900          # 15 min
+    WEATHER_HTTP_TIMEOUT_SECONDS: float = 5.0
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
