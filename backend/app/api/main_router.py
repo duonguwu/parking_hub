@@ -15,6 +15,12 @@ from app.api.booking.booking_views import booking_router
 from app.api.capacity.capacity_views import capacity_router
 from app.api.matching.matching_views import matching_router
 
+# Customer Portal — RESTful endpoints for FE integration
+from app.api.customer.customer_views import customer_router
+
+# Garage Owner Portal — RESTful endpoints for Garage FE
+from app.api.garage_portal.garage_portal_views import garage_portal_router
+
 main_router = APIRouter()
 
 # ── Auth (partially public) ──
@@ -34,3 +40,9 @@ main_router.include_router(garage_service_router)
 main_router.include_router(booking_router)
 main_router.include_router(capacity_router)
 main_router.include_router(matching_router)
+
+# ── Customer Portal (aggregated FE-facing endpoints) ──
+main_router.include_router(customer_router)
+
+# ── Garage Owner Portal (aggregated FE-facing endpoints) ──
+main_router.include_router(garage_portal_router)

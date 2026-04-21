@@ -58,3 +58,6 @@ class Resource(str, Enum):
 
     # ── Matching ──
     MATCH_RESULTS = "match results"
+
+    # ── Customer Portal ──
+    DASHBOARD_SUMMARY = "dashboard summary"

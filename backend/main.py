@@ -198,7 +198,10 @@ PUBLIC_PATH_PREFIXES = (
     "/docs",
     "/openapi.json",
     "/redoc",
-    "/garage/search_nearby",  # Public search
+    "/garage/search_nearby",       # Public search
+    "/customer/nearby",            # Public — nearby garages for Map
+    "/customer/garages/",          # Public — garage portal detail
+    "/match/search",               # Public matching (optional auth)
 )
 
 
