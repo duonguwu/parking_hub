@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Calendar, Wifi, Coffee, BatteryCharging, Snowflake, ChevronLeft, ShieldCheck, Zap, Droplets, Loader2, Star, Clock } from 'lucide-react'
+import { Calendar, Wifi, Coffee, BatteryCharging, Snowflake, ChevronLeft, Zap, Droplets, Loader2, Star, Clock } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { customerApi, type GaragePortal, TIER_COLOR } from '@/services/api'
 

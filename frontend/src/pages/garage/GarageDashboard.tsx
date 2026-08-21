@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Star, CheckCircle2, Info, Timer, Droplets, UserSearch, Car, Zap, Truck, AlertTriangle, Edit2, MoreVertical, Check, X } from 'lucide-react'
+import { Star, CheckCircle2, Info, Timer, Droplets, UserSearch } from 'lucide-react'
 import { garageApi } from '@/services/api'
 import { BOOKING_STATUS_MAP } from '@/services/api'
 
@@ -172,7 +172,7 @@ export function GarageDashboard() {
                 <div className="flex items-center justify-center h-40 text-sm font-bold text-slate-400 uppercase tracking-widest">
                   No Active Bookings
                 </div>
-              ) : queue?.items?.map((item: any, i: number) => (
+              ) : queue?.items?.map((item: any) => (
                 <div key={item.id} className="relative pl-6 pb-6 border-l border-slate-200 last:border-0 last:pb-0 group">
                   <div className={`absolute -left-[5px] top-0 w-[9px] h-[9px] rounded-full transition-transform ${item.status === 'in_progress' ? 'bg-blue-500 group-hover:scale-150 animate-pulse' : 'bg-slate-300'}`}></div>
                   <div className="space-y-3">
@@ -222,7 +222,7 @@ export function GarageDashboard() {
           </div>
           <p className="text-sm font-bold text-slate-500">Avg. Wash Time</p>
           <p className="text-3xl font-black mt-1 tracking-tight text-slate-900">
-            {Math.floor(data.bottom_stats.efficiency.avg_wash_time_seconds / 60)}m {data.bottom_stats.efficiency.avg_wash_time_seconds % 60}s
+            {Math.floor(data.bottom_stats.efficiency.avg_service_time_seconds / 60)}m {data.bottom_stats.efficiency.avg_service_time_seconds % 60}s
           </p>
           <p className="text-xs text-emerald-500 font-bold mt-2 uppercase">{data.bottom_stats.efficiency.trend_text}</p>
         </div>

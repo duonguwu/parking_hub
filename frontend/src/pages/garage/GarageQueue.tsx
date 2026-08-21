@@ -85,7 +85,7 @@ export function GarageQueue() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Booking Queue</h2>
-          <p className="text-slate-500 mt-2 font-medium">Manage scheduled maintenance and detailing appointments.</p>
+          <p className="text-slate-500 mt-2 font-medium">Quản lý danh sách lượt đã đặt và lượt đang chờ.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-white border border-slate-200 rounded-full p-1 h-fit shadow-sm">

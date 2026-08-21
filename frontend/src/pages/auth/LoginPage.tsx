@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShieldCheck, ArrowRight, Mail, Lock, User, Phone, CheckCircle2, ChevronLeft } from 'lucide-react'
 import { useAuth } from '@/services/auth-context'
+import { Brand } from '@/components/Brand'
+import { APP_NAME, APP_TAGLINE } from '@/config/app'
 
 export function LoginPage() {
   const [isLogin, setIsLogin] = useState(true)
@@ -24,8 +26,8 @@ export function LoginPage() {
     setError('')
     try {
       if (isLogin) {
-        const user = await login(formData.username, formData.password)
-        // login returns void, user available from context — redirect based on role
+        await login(formData.username, formData.password)
+        // login trả về void, thông tin user lấy từ context
         navigate('/app')
       } else {
         await register({
@@ -49,35 +51,24 @@ export function LoginPage() {
 
       {/* ── Left: Hero ── */}
       <div className="hidden lg:flex w-[45%] relative bg-slate-900 overflow-hidden flex-col justify-between">
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-luminosity"
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=1200')" }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-800 to-slate-900" />
 
         <div className="relative z-10 p-12">
-          <img src="/washmind_logo_ngang.png" alt="WashMind" className="h-10 w-auto brightness-0 invert opacity-90" />
+          <Brand className="text-white text-2xl" />
         </div>
 
         <div className="relative z-10 p-12 pb-16 space-y-6">
+          {/* Nội dung dưới đây là chữ tạm, thay khi có thông điệp chính thức. */}
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-[10px] font-bold uppercase tracking-widest border border-blue-500/30 backdrop-blur-md">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            Intelligence Protocol 4.2
+            {APP_TAGLINE}
           </div>
           <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
-            The standard<br />for premium<br />car care.
+            Đúng chỗ.<br />Đúng lúc.<br />Chắc chắn có chỗ.
           </h1>
           <p className="text-slate-400 font-medium text-sm max-w-sm leading-relaxed">
-            Access the largest network of elite detailing centers. AI-powered scheduling, telemetry tracking, and perfection-driven results.
+            Kết nối mạng lưới bãi đỗ xe, biết trước còn chỗ hay không, đặt chỗ và thanh toán không tiền mặt.
           </p>
-          <div className="flex items-center gap-3 pt-6 border-t border-slate-800">
-            <div className="flex -space-x-3">
-              {[1, 2, 3].map(i => (
-                <img key={i} className="w-8 h-8 rounded-full border-2 border-slate-900" src={`https://i.pravatar.cc/100?img=${i}`} alt="User" />
-              ))}
-            </div>
-            <p className="text-xs font-bold text-slate-500">Join 12,500+ premium members</p>
-          </div>
         </div>
 
         {/* Demo credentials hint */}
@@ -94,7 +85,7 @@ export function LoginPage() {
 
         {/* Mobile logo */}
         <div className="w-full max-w-[440px] mx-auto lg:hidden mb-12">
-          <img src="/washmind_logo_ngang.png" alt="WashMind" className="h-10 w-auto" />
+          <Brand className="text-2xl" />
         </div>
 
         <div className="w-full max-w-[440px] mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -112,8 +103,8 @@ export function LoginPage() {
             </h2>
             <p className="text-sm text-slate-500 font-medium mt-2">
               {isLogin
-                ? 'Secure access strictly for WashMind members.'
-                : 'Enter your details to generate your WashMind ID.'}
+                ? `Đăng nhập để tiếp tục vào ${APP_NAME}.`
+                : 'Nhập thông tin để tạo tài khoản mới.'}
             </p>
           </div>
 
@@ -177,7 +168,7 @@ export function LoginPage() {
 
           <div className="mt-10 text-center">
             <p className="text-sm font-medium text-slate-500">
-              {isLogin ? "Don't have a WashMind ID?" : 'Already have an account?'}
+              {isLogin ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'}
             </p>
             <button
               onClick={() => { setIsLogin(!isLogin); setError('') }}

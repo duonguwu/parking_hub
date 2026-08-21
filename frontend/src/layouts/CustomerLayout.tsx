@@ -1,13 +1,14 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { MapPin, Calendar, Search, CarFront, Settings, HelpCircle, Plus, Bell, ChevronDown, LogOut } from 'lucide-react'
 import { cn } from '@/services/utils'
+import { Brand } from '@/components/Brand'
+import { APP_TAGLINE } from '@/config/app'
 import { useAuth } from '@/services/auth-context'
 import { useState } from 'react'
 
 const navItems = [
   { to: '/app', icon: Search, label: 'Discover' },
   { to: '/app/map', icon: MapPin, label: 'Map View' },
-  { to: '/app/garages/1', icon: Settings, label: 'Garage Details' },
   { to: '/app/bookings', icon: Calendar, label: 'My Bookings' },
   { to: '/app/vehicles', icon: CarFront, label: 'My Vehicles' },
 ]
@@ -28,13 +29,9 @@ export function CustomerLayout() {
       {/* ── Left Sidebar (Desktop Web) ── */}
       <aside className="fixed left-0 top-0 h-screen w-[280px] flex flex-col pt-10 pb-8 z-40 bg-white border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
         {/* Branding */}
-        <div className="px-8 mb-12 flex flex-col items-start">
-          <img
-            src="/washmind_logo_ngang.png"
-            alt="WashMind"
-            className="h-14 w-auto mb-3"
-          />
-          <Badge text="Technical Coordinator" />
+        <div className="px-8 mb-12 flex flex-col items-start gap-2">
+          <Brand className="text-2xl" />
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{APP_TAGLINE}</p>
         </div>
 
         {/* Navigation Links */}
@@ -113,7 +110,7 @@ export function CustomerLayout() {
                 />
                 <div className="text-left hidden sm:block">
                   <p className="text-[13px] font-bold text-slate-900 leading-tight">{user?.name ?? '—'}</p>
-                  <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Elite Member</p>
+                  <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{user?.role ?? ''}</p>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400 ml-1 hidden sm:block" />
               </button>
@@ -135,14 +132,6 @@ export function CustomerLayout() {
           <Outlet />
         </div>
       </main>
-    </div>
-  )
-}
-
-function Badge({ text }: { text: string }) {
-  return (
-    <div className="bg-slate-100 border border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md">
-      {text}
     </div>
   )
 }

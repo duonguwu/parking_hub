@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
-/* ── WashMind Design System ── */
-/* Technical Schematic / Pastel Blue Blueprint */
+/* Design tokens. Xem docs/04_technical/09_Frontend_Design_System.md để biết nguyên tắc dùng. */
 
 @theme {
   /* ── Primary ── */

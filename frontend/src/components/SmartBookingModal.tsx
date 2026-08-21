@@ -20,7 +20,7 @@ const TEST_LOCATIONS = [
   { id: 'thu_duc', name: 'TP. Thủ Đức', lat: 10.8037, lng: 106.7820 },
 ]
 
-export function SmartBookingModal({ isOpen, onClose, defaultService = 'wash_premium' }: SmartBookingModalProps) {
+export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hourly' }: SmartBookingModalProps) {
   const navigate = useNavigate()
   const [phase, setPhase] = useState<'input' | 'scanning' | 'results'>('input')
 
@@ -60,7 +60,7 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'wash_prem
       customerApi.vehicles().then(vs => {
         setUserVehicles(vs)
         setVehicleId(vs.find(v => v.is_default)?.id ?? vs[0]?.id ?? '')
-      }).catch(e => setError('Failed to load vehicles'))
+      }).catch(() => setError('Không tải được danh sách xe'))
     }
   }, [isOpen])
 
@@ -73,7 +73,7 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'wash_prem
 
     // Delay randomly for dramatic effect
     setTimeout(() => setLoadingMsg('Đang đo độ kẹt xe & kiểm tra slot trống...'), 1200)
-    setTimeout(() => setLoadingMsg('Đang chấm điểm bằng WashMind Intelligence...'), 2400)
+    setTimeout(() => setLoadingMsg('Đang chấm điểm và xếp hạng lựa chọn...'), 2400)
 
     try {
       let pos: [number, number]
@@ -194,7 +194,7 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'wash_prem
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Thời điểm rửa xe</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Thời điểm sử dụng</label>
                   <div className="flex gap-4">
                     <button onClick={() => setTimeMode('now')} className={`flex-1 min-w-0 px-2 h-[56px] rounded-2xl border-2 flex items-center justify-center gap-2 transition-all font-bold ${timeMode === 'now' ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-200'}`}>
                       <Zap className={`w-4 h-4 shrink-0 px-[1px] ${timeMode === 'now' ? 'text-blue-600' : 'text-slate-400'}`} /> <span className="truncate">Hiện tại</span>
@@ -235,10 +235,10 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'wash_prem
                 <div className="space-y-3 flex flex-col">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Dịch vụ</label>
                   <select value={service} onChange={e => setService(e.target.value)} className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl p-4 outline-none focus:border-blue-500 font-bold appearance-none cursor-pointer">
-                    <option value="wash_standard">Rửa Tiêu Chuẩn</option>
-                    <option value="wash_premium">Rửa Premium</option>
-                    <option value="detailing">Detailing Chuyên Sâu</option>
-                    <option value="interior">Vệ Sinh Nội Thất</option>
+                    <option value="park_hourly">Gửi theo giờ</option>
+                    <option value="park_overnight">Gửi qua đêm</option>
+                    <option value="park_daily">Gửi theo ngày</option>
+                    <option value="park_monthly">Gói tháng</option>
                   </select>
                 </div>
                 <div className="space-y-3 flex flex-col">

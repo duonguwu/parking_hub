@@ -1,5 +1,5 @@
-// WashMind API Client — HttpOnly Cookie auth, no localStorage
-const API_BASE = 'http://localhost:8000'
+// API client. Auth bằng HttpOnly cookie, không dùng localStorage.
+import { API_BASE } from '@/config/app'
 
 export const apiFetch = async (path: string, options?: RequestInit) => {
   return fetch(`${API_BASE}${path}`, {
@@ -189,7 +189,7 @@ export const BOOKING_STATUS_MAP: Record<string, { label: string; color: string }
   confirmed:             { label: 'Đã xác nhận',    color: 'blue'   },
   customer_arriving:     { label: 'Đang đến',        color: 'blue'   },
   customer_arrived:      { label: 'Đã đến',          color: 'green'  },
-  in_service:            { label: 'Đang rửa xe',     color: 'blue'   },
+  in_service:            { label: 'Đang phục vụ',    color: 'blue'   },
   completed:             { label: 'Hoàn thành',      color: 'green'  },
   cancelled_by_customer: { label: 'Đã hủy',          color: 'red'    },
   cancelled_by_garage:   { label: 'Gara hủy',        color: 'red'    },
@@ -353,28 +353,28 @@ export const matchingApi = {
 
 export const garageApi = {
   dashboardOverview: async () => {
-    const res = await apiFetch('/garage/dashboard/overview')
+    const res = await apiFetch('/garage-portal/dashboard/overview')
     const json = await res.json()
     if (!res.ok) throw new Error(json.detail || 'Failed to load dashboard overview')
     return json.data
   },
 
   dashboardCapacity: async (range: string = '24H') => {
-    const res = await apiFetch(`/garage/dashboard/capacity?range=${range}`)
+    const res = await apiFetch(`/garage-portal/dashboard/capacity?range=${range}`)
     const json = await res.json()
     if (!res.ok) throw new Error(json.detail || 'Failed to load capacity chart')
     return json.data
   },
 
   queue: async (filter: string = 'all', page: number = 1, limit: number = 10) => {
-    const res = await apiFetch(`/garage/queue?filter=${filter}&page=${page}&limit=${limit}`)
+    const res = await apiFetch(`/garage-portal/queue?filter=${filter}&page=${page}&limit=${limit}`)
     const json = await res.json()
     if (!res.ok) throw new Error(json.detail || 'Failed to load queue')
     return json.data
   },
 
   updateBookingStatus: async (id: string, status: string) => {
-    const res = await apiFetch(`/garage/queue/bookings/${id}`, {
+    const res = await apiFetch(`/garage-portal/queue/bookings/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ status })
     })
@@ -384,21 +384,21 @@ export const garageApi = {
   },
 
   analytics: async (range: string = '30D') => {
-    const res = await apiFetch(`/garage/analytics?range=${range}`)
+    const res = await apiFetch(`/garage-portal/analytics?range=${range}`)
     const json = await res.json()
     if (!res.ok) throw new Error(json.detail || 'Failed to load analytics')
     return json.data
   },
 
   services: async () => {
-    const res = await apiFetch('/garage/services')
+    const res = await apiFetch('/garage-portal/services')
     const json = await res.json()
     if (!res.ok) throw new Error(json.detail || 'Failed to load services')
     return json.data
   },
 
   createService: async (data: { service_type_code: string; price_usd: number; duration_minutes: number }) => {
-    const res = await apiFetch('/garage/services', {
+    const res = await apiFetch('/garage-portal/services', {
       method: 'POST',
       body: JSON.stringify(data)
     })
@@ -408,7 +408,7 @@ export const garageApi = {
   },
 
   updateService: async (id: string, data: { price_usd?: number; duration_minutes?: number }) => {
-    const res = await apiFetch(`/garage/services/${id}`, {
+    const res = await apiFetch(`/garage-portal/services/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data)
     })
@@ -418,7 +418,7 @@ export const garageApi = {
   },
 
   deleteService: async (id: string) => {
-    const res = await apiFetch(`/garage/services/${id}`, {
+    const res = await apiFetch(`/garage-portal/services/${id}`, {
       method: 'DELETE'
     })
     const json = await res.json()
@@ -427,7 +427,7 @@ export const garageApi = {
   },
 
   score: async () => {
-    const res = await apiFetch('/garage/score')
+    const res = await apiFetch('/garage-portal/score')
     const json = await res.json()
     if (!res.ok) throw new Error(json.detail || 'Failed to load score')
     return json.data

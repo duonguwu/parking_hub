@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, CalendarDays, LineChart, Settings2, Gauge, Plus, Settings, HelpCircle, Search, Bell } from 'lucide-react'
 import { useAuth } from '@/services/auth-context'
+import { Brand } from '@/components/Brand'
 
 export function GarageLayout() {
   const { user } = useAuth()
@@ -20,8 +21,8 @@ export function GarageLayout() {
       <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-50 border-r border-slate-200 z-50 overflow-y-auto">
         <div className="flex flex-col gap-y-2 p-6 h-full text-sm font-medium tracking-wide">
           <div className="mb-8 px-4">
-            <span className="text-xl font-extrabold text-blue-600">WashMind</span>
-            <p className="text-[0.6875rem] uppercase tracking-widest text-slate-500 mt-1">Garage Owner Portal</p>
+            <Brand />
+            <p className="text-[0.6875rem] uppercase tracking-widest text-slate-500 mt-1">Cổng chủ bãi</p>
           </div>
           
           <nav className="flex flex-col gap-y-2">
@@ -85,11 +86,11 @@ export function GarageLayout() {
           
           <div className="flex items-center gap-3 ml-4">
             <div className="text-right">
-              <p className="text-xs font-bold text-slate-900">{user?.full_name || 'Garage Owner'}</p>
-              <p className="text-[10px] uppercase tracking-tighter text-slate-500">Master Detailer</p>
+              <p className="text-xs font-bold text-slate-900">{user?.name || 'Chủ bãi'}</p>
+              <p className="text-[10px] uppercase tracking-tighter text-slate-500">{user?.role ?? ''}</p>
             </div>
             <div className="w-10 h-10 rounded-full border border-slate-200 bg-slate-100 flex items-center justify-center font-bold text-slate-600 uppercase">
-              {user?.full_name?.charAt(0) || 'G'}
+              {user?.name?.charAt(0) || 'P'}
             </div>
           </div>
         </div>

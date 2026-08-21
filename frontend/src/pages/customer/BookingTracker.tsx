@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, CheckCircle2, Circle, Clock, Loader2, MapPin } from 'lucide-react'
+import { ChevronLeft, CheckCircle2, Circle, Clock, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { customerApi, type BookingTracking, BOOKING_STATUS_MAP } from '@/services/api'
 
@@ -9,7 +9,7 @@ const TIMELINE_STEPS = [
   { key: 'CONFIRMED',           label: 'Cửa hàng xác nhận',  desc: 'Gara đã chấp nhận lịch hẹn' },
   { key: 'CUSTOMER_DEPARTING',  label: 'Đang trên đường',     desc: 'Khách hàng đang di chuyển đến' },
   { key: 'CUSTOMER_ARRIVED',    label: 'Đã đến nơi',          desc: 'Khách hàng đã check-in tại gara' },
-  { key: 'IN_SERVICE',          label: 'Đang thực hiện',      desc: 'Kỹ thuật viên đang rửa xe' },
+  { key: 'IN_SERVICE',          label: 'Đang thực hiện',      desc: 'Đang trong quá trình phục vụ' },
   { key: 'COMPLETED',           label: 'Hoàn tất',            desc: 'Dịch vụ đã hoàn thành' },
 ]
 
