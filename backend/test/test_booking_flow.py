@@ -26,7 +26,7 @@ class TestBookingCreate:
             cookies=registered_customer["cookies"],
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "wash_premium",
+                "service_type_code": "park_overnight",
                 "requested_time": _future_time(30),
             },
         )
@@ -44,7 +44,7 @@ class TestBookingCreate:
             cookies=registered_customer["cookies"],
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "coating",     # not configured at this garage
+                "service_type_code": "park_monthly",     # not configured at this garage
                 "requested_time": _future_time(60),
             },
         )
@@ -60,7 +60,7 @@ class TestBookingCreate:
                 "/bookings/create",
                 json={
                     "garage_id": configured_garage["garage_id"],
-                    "service_type_code": "wash_premium",
+                    "service_type_code": "park_overnight",
                     "requested_time": _future_time(30),
                 },
             )
@@ -82,7 +82,7 @@ class TestBookingStateMachine:
             cookies=customer_cookies,
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "wash_basic",
+                "service_type_code": "park_hourly",
                 "requested_time": _future_time(15),
             },
         )
@@ -163,7 +163,7 @@ class TestBookingStateMachine:
             cookies=registered_customer["cookies"],
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "wash_basic",
+                "service_type_code": "park_hourly",
                 "requested_time": _future_time(45),
             },
         )
@@ -188,7 +188,7 @@ class TestBookingStateMachine:
             cookies=cust_cookies,
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "wash_basic",
+                "service_type_code": "park_hourly",
                 "requested_time": _future_time(20),
             },
         )
@@ -214,7 +214,7 @@ class TestBookingCancellation:
             cookies=registered_customer["cookies"],
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "wash_basic",
+                "service_type_code": "park_hourly",
                 "requested_time": _future_time(90),
             },
         )

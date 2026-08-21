@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WashMind Backend — FastAPI Application Entry Point
+Backend — FastAPI Application Entry Point
 
 Usage:
     uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
         from app.api.auth.auth_utils import seed_super_admin
         await seed_super_admin()
 
-        # 4. Seed service type catalog (Phase 2)
+        # 4. Seed service catalog
         from app.api.service_type.service_type_utils import seed_default_service_types
         await seed_default_service_types()
 
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Redis not available — continuing without cache: {e}")
 
-        logger.info("🚀 WashMind Backend started successfully")
+        logger.info(f"{settings.APP_NAME} backend started successfully")
 
     except Exception as e:
         logger.critical(f"Startup failed: {e}", exc_info=True)
@@ -116,7 +116,7 @@ async def ensure_indexes():
         await VehicleModel.collection.create_index("owner_user_id")
         await VehicleModel.collection.create_index("license_plate", unique=True)
 
-        # ── Phase 2 collections ──
+        # ── Collections cho nghiệp vụ đặt chỗ và công suất ──
         from app.api.service_type.service_type_models import ServiceTypeModel
         from app.api.garage_service.garage_service_models import GarageServiceModel
         from app.api.booking.booking_models import BookingModel
@@ -157,7 +157,7 @@ async def ensure_indexes():
             name="ttl_created_at"
         )
 
-        logger.info("✅ MongoDB indexes ensured")
+        logger.info("MongoDB indexes ensured")
     except Exception as e:
         logger.warning(f"Index creation warning: {e}")
 
@@ -165,8 +165,8 @@ async def ensure_indexes():
 # ── FastAPI App ──────────────────────────────────────────────────
 
 app = FastAPI(
-    title="WashMind API",
-    description="Intelligent dispatch system for car wash network",
+    title=f"{settings.APP_NAME} API",
+    description="Nền tảng điều phối mạng lưới bãi đỗ xe",
     version=settings.APP_VERSION,
     lifespan=lifespan,
 )
@@ -248,7 +248,7 @@ app.include_router(main_router)
 
 @app.get("/")
 def root():
-    return {"status": "ok", "app": "WashMind", "version": settings.APP_VERSION}
+    return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
 
 
 @app.get("/health")

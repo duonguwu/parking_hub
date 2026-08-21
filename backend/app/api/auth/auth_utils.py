@@ -283,7 +283,7 @@ async def seed_super_admin():
     admin_doc = UserModel(
         tenant_id="super_admin",
         username=settings.SUPER_ADMIN_USERNAME,
-        email="admin@washmind.vn",
+        email="admin@parkinghub.vn",
         phone="0000000000",
         password_hash=hash_password(settings.SUPER_ADMIN_PASSWORD),
         name="Super Admin",

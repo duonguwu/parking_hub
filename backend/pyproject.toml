@@ -1,7 +1,7 @@
 [project]
-name = "washmind-backend"
+name = "parkinghub-backend"
 version = "0.1.0"
-description = "WashMind — Intelligent dispatch system for car wash network"
+description = "Backend nền tảng điều phối mạng lưới bãi đỗ xe"
 requires-python = ">=3.11"
 dependencies = [
     # Core

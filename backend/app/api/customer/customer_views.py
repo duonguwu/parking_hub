@@ -266,7 +266,7 @@ async def garage_portal(garage_id: str) -> Dict[str, Any]:
             "category": stype["category"] if stype else "wash",
             "time_mins": svc.get("estimated_duration_minutes", 30),
             "price_vnd": svc.get("price", 0),
-            "is_popular": svc.get("service_type_code") in ("wash_premium", "detailing"),
+            "is_popular": svc.get("service_type_code") in ("park_hourly", "park_monthly"),
         })
 
     # ── Capacity load (hourly pattern) ──

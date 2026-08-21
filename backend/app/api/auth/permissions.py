@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-RBAC Permissions — Role-Based Access Control for WashMind.
+RBAC Permissions — Role-Based Access Control.
 
 Permission format: "{module}:{action}"
     e.g. "garage:view", "booking:create", "user:edit"

@@ -1025,7 +1025,7 @@ wheels = [
 ]
 
 [[package]]
-name = "washmind-backend"
+name = "parkinghub-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

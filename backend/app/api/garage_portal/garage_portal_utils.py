@@ -28,11 +28,10 @@ logger = logging.getLogger(__name__)
 
 # ── Icon mapping for service types ───────────────────────────────
 _ICON_MAP = {
-    "wash_basic": "droplets",
-    "wash_premium": "spray-can",
-    "interior": "sofa",
-    "detailing": "sparkles",
-    "coating": "shield",
+    "park_hourly": "clock",
+    "park_overnight": "moon",
+    "park_daily": "calendar-days",
+    "park_monthly": "credit-card",
 }
 
 # ── Tier labels ──────────────────────────────────────────────────
@@ -170,7 +169,7 @@ async def get_dashboard_overview(garage: dict) -> dict:
         },
         "bottom_stats": {
             "efficiency": {
-                "avg_wash_time_seconds": avg_time_mins * 60,
+                "avg_service_time_seconds": avg_time_mins * 60,
                 "trend_text": "Within normal range" if avg_time_mins > 0 else "No data yet",
             },
             "resources": {

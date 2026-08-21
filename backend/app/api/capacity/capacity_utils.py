@@ -219,7 +219,7 @@ async def _historical_baseline(
 async def predict_capacity(garage_id: str, at_time: datetime) -> CapacityState:
     """
     Blend 3 components by how far ahead we're predicting.
-    See phase2 doc §4.2.
+    Xem docs/04_technical/08_Codebase_Guide.md phần capacity.
     """
     oid = convert_mongo_object_id(garage_id) if isinstance(garage_id, str) else garage_id
     if not oid:

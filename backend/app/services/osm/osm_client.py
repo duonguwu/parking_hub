@@ -86,7 +86,7 @@ class OSMClient:
         if self._http is None or self._http.is_closed:
             self._http = httpx.AsyncClient(
                 timeout=settings.OSM_HTTP_TIMEOUT_SECONDS,
-                headers={"User-Agent": "WashMind/0.1 (backend)"},
+                headers={"User-Agent": "ParkingHub/0.1 (backend)"},
             )
         return self._http
 

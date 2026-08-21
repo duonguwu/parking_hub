@@ -12,16 +12,16 @@ class TestServiceTypeCatalog:
         assert resp.status_code == 200
         data = resp.json()["data"]
         codes = {st["code"] for st in data}
-        # Seeded 5 defaults
-        assert {"wash_basic", "wash_premium", "interior", "detailing", "coating"}.issubset(codes)
+        # 4 mục seed mặc định
+        assert {"park_hourly", "park_overnight", "park_daily", "park_monthly"}.issubset(codes)
 
     async def test_get_by_code(self, client: AsyncClient):
-        resp = await client.post("/service-types/get_by_code", json={"code": "wash_premium"})
+        resp = await client.post("/service-types/get_by_code", json={"code": "park_monthly"})
         assert resp.status_code == 200
         d = resp.json()["data"]
-        assert d["code"] == "wash_premium"
+        assert d["code"] == "park_monthly"
         assert d["minimum_tier"] == 2
-        assert d["vehicle_type_multiplier"]["luxury"] >= 1.5
+        assert d["vehicle_type_multiplier"]["luxury"] == 1.0
 
     async def test_get_by_code_not_found(self, client: AsyncClient):
         resp = await client.post("/service-types/get_by_code", json={"code": "nonexistent"})

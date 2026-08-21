@@ -33,7 +33,7 @@ from app.api.garage_portal.garage_portal_utils import (
 
 logger = logging.getLogger(__name__)
 
-garage_portal_router = APIRouter(prefix="/api/v1/garage", tags=["Garage Owner Portal"])
+garage_portal_router = APIRouter(prefix="/garage-portal", tags=["Garage Owner Portal"])
 
 
 # ─────────────────────────────────────────────────────────────────

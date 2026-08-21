@@ -16,7 +16,7 @@ def format_service_type(doc) -> dict:
         "id": str(data.get("_id") or data.get("id") or ""),
         "code": data.get("code", ""),
         "name": data.get("name", ""),
-        "category": data.get("category", "wash"),
+        "category": data.get("category", "hourly"),
         "description": data.get("description", ""),
         "base_price_min": data.get("base_price_min", 0),
         "base_price_max": data.get("base_price_max", 0),
@@ -40,57 +40,53 @@ async def get_service_type_by_code(code: str) -> Optional[dict]:
 
 
 async def seed_default_service_types():
-    """Seed the default WashMind service catalog (idempotent)."""
+    """
+    Seed danh mục dịch vụ mặc định (idempotent).
+
+    Đây là DỮ LIỆU MẪU để các luồng đặt chỗ, tính giá và dashboard có dữ liệu chạy.
+    Khi chốt nghiệp vụ đỗ xe, thay danh sách dưới đây bằng danh mục thật.
+    Xem docs/04_technical/08_Codebase_Guide.md mục về service_type.
+    """
     defaults = [
         {
-            "code": "wash_basic",
-            "name": "Rửa xe cơ bản",
-            "category": "wash",
-            "description": "Rửa xe ngoại thất cơ bản",
-            "base_price_min": 50000, "base_price_max": 100000,
-            "estimated_duration_minutes": 20,
-            "minimum_tier": 1,
-            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.2, "luxury": 1.5, "super": 2.0},
-        },
-        {
-            "code": "wash_premium",
-            "name": "Rửa xe Premium",
-            "category": "wash",
-            "description": "Rửa ngoại thất + nội thất cơ bản",
-            "base_price_min": 80000, "base_price_max": 200000,
-            "estimated_duration_minutes": 30,
-            "minimum_tier": 2,
-            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.3, "luxury": 1.6, "super": 2.0},
-        },
-        {
-            "code": "interior",
-            "name": "Vệ sinh nội thất",
-            "category": "interior",
-            "description": "Hút bụi, lau nội thất, khử mùi",
-            "base_price_min": 150000, "base_price_max": 400000,
+            "code": "park_hourly",
+            "name": "Gửi xe theo giờ",
+            "category": "hourly",
+            "description": "Tính phí theo thời gian gửi thực tế",
+            "base_price_min": 15000, "base_price_max": 30000,
             "estimated_duration_minutes": 60,
+            "minimum_tier": 1,
+            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.0, "luxury": 1.0, "super": 1.0},
+        },
+        {
+            "code": "park_overnight",
+            "name": "Gửi xe qua đêm",
+            "category": "overnight",
+            "description": "Gửi trong khung giờ đêm theo giá cố định",
+            "base_price_min": 50000, "base_price_max": 120000,
+            "estimated_duration_minutes": 720,
+            "minimum_tier": 1,
+            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.0, "luxury": 1.0, "super": 1.0},
+        },
+        {
+            "code": "park_daily",
+            "name": "Gửi xe theo ngày",
+            "category": "daily",
+            "description": "Gửi nhiều ngày liên tục, ví dụ đi công tác",
+            "base_price_min": 100000, "base_price_max": 250000,
+            "estimated_duration_minutes": 1440,
+            "minimum_tier": 1,
+            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.0, "luxury": 1.0, "super": 1.0},
+        },
+        {
+            "code": "park_monthly",
+            "name": "Gói tháng",
+            "category": "monthly",
+            "description": "Cam kết theo tháng, khung giờ do bãi quy định",
+            "base_price_min": 1000000, "base_price_max": 3000000,
+            "estimated_duration_minutes": 43200,
             "minimum_tier": 2,
-            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.3, "luxury": 1.6, "super": 2.0},
-        },
-        {
-            "code": "detailing",
-            "name": "Detailing chuyên sâu",
-            "category": "detailing",
-            "description": "Làm mới ngoại thất chuyên sâu",
-            "base_price_min": 500000, "base_price_max": 2000000,
-            "estimated_duration_minutes": 180,
-            "minimum_tier": 3,
-            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.3, "luxury": 1.6, "super": 2.2},
-        },
-        {
-            "code": "coating",
-            "name": "Phủ ceramic/nano",
-            "category": "coating",
-            "description": "Phủ bảo vệ sơn xe",
-            "base_price_min": 3000000, "base_price_max": 15000000,
-            "estimated_duration_minutes": 480,
-            "minimum_tier": 4,
-            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.2, "luxury": 1.5, "super": 2.0},
+            "vehicle_type_multiplier": {"standard": 1.0, "premium": 1.0, "luxury": 1.0, "super": 1.0},
         },
     ]
 

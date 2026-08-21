@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WashMind — Application Settings (pydantic-settings, load from .env)
+Application Settings (pydantic-settings, load from .env)
 
 Usage:
     from app.core.config import settings
@@ -13,13 +13,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────────
-    APP_NAME: str = "WashMind"
+    APP_NAME: str = "Parking HUB"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
 
     # ── MongoDB ──────────────────────────────────────────────────
-    MONGO_URI: str = "mongodb://admin:admin123@localhost:27017/washmind?authSource=admin"
-    MONGO_DB: str = "washmind"
+    MONGO_URI: str = "mongodb://admin:admin123@localhost:27017/parkinghub?authSource=admin"
+    MONGO_DB: str = "parkinghub"
 
     # ── Authentication (JWT) ─────────────────────────────────────
     JWT_SECRET_KEY: str = secrets.token_hex(32)
@@ -34,18 +34,18 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
-    # ── Redis (Phase 2: locks, caching) ──────────────────────────
+    # ── Redis (khoá phân tán, cache) ─────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_CACHE_TTL_SECONDS: int = 3600          # 1h default
     REDIS_LOCK_TIMEOUT_SECONDS: int = 10
 
-    # ── OSM Routing (Phase 2) ────────────────────────────────────
+    # ── OSM Routing ──────────────────────────────────────────────
     # Public demo OSRM — rate-limited, use self-hosted for prod.
     OSRM_BASE_URL: str = "https://router.project-osrm.org"
     OSM_ROUTE_CACHE_TTL_SECONDS: int = 3600
     OSM_HTTP_TIMEOUT_SECONDS: float = 5.0
 
-    # ── Weather (Phase 2) ────────────────────────────────────────
+    # ── Weather ──────────────────────────────────────────────────
     OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com/v1/forecast"
     WEATHER_CACHE_TTL_SECONDS: int = 900          # 15 min
     WEATHER_HTTP_TIMEOUT_SECONDS: float = 5.0

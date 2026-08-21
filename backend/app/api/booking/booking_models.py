@@ -5,7 +5,7 @@ from app.db.mongo import mongo_instance
 from app.db.base_model import TenantAwareDocument
 
 
-# State machine — see phase2_matching_engine.md §3.1
+# State machine, xem docs/04_technical/08_Codebase_Guide.md phần booking
 BOOKING_STATUSES = [
     "pending",              # just created, waiting garage confirm
     "confirmed",            # garage accepted

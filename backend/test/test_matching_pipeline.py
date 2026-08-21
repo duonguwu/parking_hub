@@ -11,14 +11,14 @@ class TestMatchSearch:
         self, client: AsyncClient, configured_garage,
     ):
         """
-        User near the test garage searching wash_premium should find it.
+        User near the test garage searching park_overnight should find it.
         Public endpoint, no auth needed.
         """
         resp = await client.post(
             "/match/search",
             json={
                 "current_location": {"lat": 10.7835, "lng": 106.6860},
-                "service_type_code": "wash_premium",
+                "service_type_code": "park_overnight",
                 "max_travel_minutes": 30,
             },
         )
@@ -44,7 +44,7 @@ class TestMatchSearch:
             "/match/search",
             json={
                 "current_location": {"lat": 10.7835, "lng": 106.6860},
-                "service_type_code": "wash_premium",
+                "service_type_code": "park_overnight",
                 "vehicle_type": "super",  # requires tier 4
                 "max_travel_minutes": 30,
             },
@@ -63,7 +63,7 @@ class TestMatchSearch:
             "/match/search",
             json={
                 "current_location": {"lat": 10.7835, "lng": 106.6860},
-                "service_type_code": "wash_premium",
+                "service_type_code": "park_overnight",
             },
         )
         assert resp.status_code == 200
@@ -90,7 +90,7 @@ class TestMatchSearch:
             "/match/search",
             json={
                 "current_location": {"lat": 10.7835, "lng": 106.6860},
-                "service_type_code": "wash_premium",
+                "service_type_code": "park_overnight",
             },
         )
         data = resp.json()["data"]
@@ -119,7 +119,7 @@ class TestMatchReasons:
             "/match/search",
             json={
                 "current_location": {"lat": 10.7835, "lng": 106.6860},
-                "service_type_code": "wash_premium",
+                "service_type_code": "park_overnight",
             },
         )
         data = resp.json()["data"]

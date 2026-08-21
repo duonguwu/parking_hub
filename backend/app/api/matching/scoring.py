@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 8 scoring functions + context-dependent weights.
-Reference: phase2_matching_engine.md §2.5.
+Xem docs/04_technical/08_Codebase_Guide.md phần matching engine.
 """
 from typing import Dict, List, Optional
 

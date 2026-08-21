@@ -66,7 +66,7 @@ class TestGarageUpdate:
 
         resp = await client.post("/garage/update", cookies=cookies, json={
             "id": garage_id,
-            "description": "Gara rửa xe chuyên nghiệp Q3",
+            "description": "Bãi đỗ xe mẫu tại Q3",
             "amenities": ["wifi", "coffee", "waiting_area"],
             "is_accepting_bookings": True,
         })

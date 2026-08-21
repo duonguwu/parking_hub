@@ -18,8 +18,8 @@ class TestGarageServiceConfig:
         assert resp.status_code == 200
         services = resp.json()["data"]
         codes = {s["service_type_code"] for s in services}
-        assert "wash_premium" in codes
-        premium = next(s for s in services if s["service_type_code"] == "wash_premium")
+        assert "park_overnight" in codes
+        premium = next(s for s in services if s["service_type_code"] == "park_overnight")
         assert premium["price"] == 150000
 
     async def test_upsert_updates_existing(
@@ -32,7 +32,7 @@ class TestGarageServiceConfig:
             cookies=cookies,
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "wash_basic",
+                "service_type_code": "park_hourly",
                 "price": 95000,
             },
         )

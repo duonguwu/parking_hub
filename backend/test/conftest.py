@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WashMind Test Configuration — Shared fixtures for all tests.
+Test Configuration — Shared fixtures for all tests.
 
 Chạy tests:
     uv run pytest test/ -v
@@ -16,9 +16,9 @@ from httpx import AsyncClient, ASGITransport
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Force test database BEFORE any app import
-os.environ["MONGO_DB"] = "washmind_test"
-os.environ["MONGO_URI"] = "mongodb://admin:password123@localhost:27017/washmind_test?authSource=admin"
-os.environ["JWT_SECRET_KEY"] = "test-secret-key-washmind-2026"
+os.environ["MONGO_DB"] = "parkinghub_test"
+os.environ["MONGO_URI"] = "mongodb://admin:password123@localhost:27017/parkinghub_test?authSource=admin"
+os.environ["JWT_SECRET_KEY"] = "test-secret-key-2026"
 os.environ["SUPER_ADMIN_USERNAME"] = "superadmin"
 os.environ["SUPER_ADMIN_PASSWORD"] = "TestAdmin@2026"
 
@@ -39,7 +39,7 @@ async def client():
     motor_client = get_motor_client()
 
     # 2. Drop test DB for clean state
-    await motor_client.drop_database("washmind_test")
+    await motor_client.drop_database("parkinghub_test")
 
     # 3. Create indexes
     from app.api.user.user_models import UserModel
@@ -88,7 +88,7 @@ async def client():
         yield ac
 
     # 6. Cleanup: drop test DB
-    await motor_client.drop_database("washmind_test")
+    await motor_client.drop_database("parkinghub_test")
     close_mongo()
 
     # Disconnect Redis
@@ -198,7 +198,7 @@ async def configured_garage(
         cookies=owner_cookies,
         json={
             "garage_id": garage_id,
-            "service_type_code": "wash_premium",
+            "service_type_code": "park_overnight",
             "price": 150000,
             "estimated_duration_minutes": 30,
         },
@@ -211,7 +211,7 @@ async def configured_garage(
         cookies=owner_cookies,
         json={
             "garage_id": garage_id,
-            "service_type_code": "wash_basic",
+            "service_type_code": "park_hourly",
             "price": 80000,
             "estimated_duration_minutes": 20,
         },
@@ -220,6 +220,6 @@ async def configured_garage(
     return {
         "garage_id": garage_id,
         "cookies": owner_cookies,
-        "service_type_code": "wash_premium",
+        "service_type_code": "park_overnight",
         "price": 150000,
     }

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tests for Auth module — register, login, refresh, logout, me."""
 import pytest
+from app.core.config import settings
 from httpx import AsyncClient, ASGITransport
 
 
@@ -17,7 +18,7 @@ class TestHealthCheck:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["app"] == "WashMind"
+        assert data["app"] == settings.APP_NAME
 
     async def test_health(self, client: AsyncClient):
         resp = await client.get("/health")

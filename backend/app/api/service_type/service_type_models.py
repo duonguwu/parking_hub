@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Service Type — Platform-level catalog of wash/detailing services."""
+"""Service Type — Danh mục dịch vụ cấp nền tảng (đang là dữ liệu mẫu)."""
 from umongo import fields
 from app.db.mongo import mongo_instance
 from app.db.base_model import TenantAwareDocument
 
 
 # Categories of service
-SERVICE_CATEGORIES = ["wash", "detailing", "interior", "coating", "repair"]
+# Dữ liệu mẫu, chốt lại khi thiết kế nghiệp vụ đỗ xe.
+SERVICE_CATEGORIES = ["hourly", "overnight", "daily", "monthly", "other"]
 
 
 @mongo_instance.register
 class ServiceTypeModel(TenantAwareDocument):
     # tenant_id always "platform" for this collection
-    code = fields.StringField(required=True)         # unique, e.g. "wash_premium"
+    code = fields.StringField(required=True)         # unique, ví dụ "park_hourly"
     name = fields.StringField(required=True)
-    category = fields.StringField(default="wash")
+    category = fields.StringField(default="hourly")
     description = fields.StringField(default="")
 
     base_price_min = fields.IntegerField(default=0)   # VND
