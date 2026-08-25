@@ -374,8 +374,8 @@ section[id] {
   color: white;
 }
 
-.site-header:not(.is-scrolled) .brand-name strong {
-  color: #9fc0ff;
+.site-header:not(.is-scrolled) .brand img {
+  content: url("../assets/image/LOGO_Ngang_transparent-darkmode.png");
 }
 
 .site-header:not(.is-scrolled) .desktop-cta {
