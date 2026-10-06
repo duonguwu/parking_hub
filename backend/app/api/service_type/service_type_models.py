@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Service Type — Danh mục dịch vụ cấp nền tảng (đang là dữ liệu mẫu)."""
+"""Service Type — Danh mục dịch vụ cấp nền tảng (gửi xe, gói, dịch vụ kèm)."""
 from umongo import fields
 from app.db.mongo import mongo_instance
 from app.db.base_model import TenantAwareDocument
 
 
-# Categories of service
-# Dữ liệu mẫu, chốt lại khi thiết kế nghiệp vụ đỗ xe.
-SERVICE_CATEGORIES = ["hourly", "overnight", "daily", "monthly", "other"]
+# parking: gửi lượt (giờ/đêm/ngày) — subscription: gói định kỳ — addon: dịch vụ kèm
+SERVICE_CATEGORIES = ["parking", "subscription", "addon"]
+# Đơn vị hiển thị giá
+SERVICE_UNITS = ["hour", "night", "day", "workday", "month", "session"]
 
 
 @mongo_instance.register
@@ -15,18 +16,18 @@ class ServiceTypeModel(TenantAwareDocument):
     # tenant_id always "platform" for this collection
     code = fields.StringField(required=True)         # unique, ví dụ "park_hourly"
     name = fields.StringField(required=True)
-    category = fields.StringField(default="hourly")
+    category = fields.StringField(default="parking")
+    unit = fields.StringField(default="hour")
+    icon = fields.StringField(default="clock")        # tên icon lucide
     description = fields.StringField(default="")
 
-    base_price_min = fields.IntegerField(default=0)   # VND
+    base_price_min = fields.IntegerField(default=0)   # VND — khoảng giá tham khảo thị trường
     base_price_max = fields.IntegerField(default=0)
-    estimated_duration_minutes = fields.IntegerField(default=30)
+    estimated_duration_minutes = fields.IntegerField(default=60)
+    default_pricing = fields.DictField(default=dict)  # mẫu bảng giá khi chủ bãi thêm dịch vụ
 
-    minimum_tier = fields.IntegerField(default=1)     # 1-4
-    # Multiplier by vehicle type (price scaling)
-    vehicle_type_multiplier = fields.DictField(default=dict)
-    # {"standard": 1.0, "premium": 1.3, "luxury": 1.6, "super": 2.0}
-
+    is_popular = fields.BooleanField(default=False)
+    sort_order = fields.IntegerField(default=100)
     is_active = fields.BooleanField(default=True)
 
     class Meta(TenantAwareDocument.Meta):

@@ -21,6 +21,13 @@ class ServiceTypeCodeInput(BaseModel):
     code: str
 
 
+@service_type_router.get("")
+async def get_service_types(active_only: bool = True) -> Dict[str, Any]:
+    """REST — danh mục dịch vụ, sắp theo sort_order."""
+    data = await get_all_service_types(active_only=active_only)
+    return api_response(Operation.RETRIEVED, Resource.SERVICE_TYPE, data)
+
+
 @service_type_router.post("/get_all")
 async def list_service_types(
     input_data: ServiceTypeFilter = ServiceTypeFilter(),
