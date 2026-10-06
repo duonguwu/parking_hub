@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Garage Views — POST-based API endpoints for garage management."""
+"""Garage Views — API hồ sơ bãi đỗ."""
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 
 from app.api.garage.garage_utils import (
-    get_all_garages,
-    get_garage_by_id,
-    search_garages_nearby,
-    update_garage,
-    update_garage_capacity,
+    get_all_garages, get_garage_by_id, search_garages, update_garage,
+)
+from app.api.garage.garage_schemas import GarageProfileUpdate, GarageSearchRequest
+from app.api.garage.garage_classification_utils import (
+    LOT_TYPES, INTEGRATION_LEVELS, GRADE_CHECKLIST, GRADE_GROUPS,
 )
 from app.api.auth.permissions import require_permission
 from app.api.shared.common_utils import api_response
@@ -26,30 +26,20 @@ class GarageIdInput(BaseModel):
     id: str = Field(..., min_length=1)
 
 
-class GarageUpdateInput(BaseModel):
+class GarageUpdateInput(GarageProfileUpdate):
     id: str = Field(..., min_length=1)
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = None
-    services_offered: Optional[List[str]] = None
-    vehicle_types_accepted: Optional[List[str]] = None
-    amenities: Optional[List[str]] = None
-    is_accepting_bookings: Optional[bool] = None
-    operating_hours: Optional[Dict[str, Any]] = None
 
 
-class GarageCapacityInput(BaseModel):
-    id: str = Field(..., min_length=1)
-    vehicles_in_service: int = Field(..., ge=0)
-    vehicles_waiting: int = Field(..., ge=0)
-    estimated_wait_minutes: int = Field(default=0, ge=0)
-
-
-class GarageSearchInput(BaseModel):
-    latitude: float = Field(..., ge=-90, le=90)
-    longitude: float = Field(..., ge=-180, le=180)
-    max_distance_km: float = Field(default=10, ge=1, le=50)
-    min_tier: int = Field(default=1, ge=1, le=4)
-    service_type: Optional[str] = None
+@garage_router.get("/taxonomy")
+async def taxonomy() -> Dict[str, Any]:
+    """Public — danh mục loại hình, cấp tích hợp, checklist kiểm định (dùng cho FE)."""
+    data = {
+        "lot_types": [{"code": k, "label": v} for k, v in LOT_TYPES.items()],
+        "integration_levels": [{"level": k, **v} for k, v in INTEGRATION_LEVELS.items()],
+        "grade_checklist": GRADE_CHECKLIST,
+        "grade_groups": GRADE_GROUPS,
+    }
+    return api_response(Operation.RETRIEVED, Resource.GARAGES, data)
 
 
 @garage_router.post("/get_all")
@@ -62,14 +52,15 @@ async def get_garages(
 
 
 @garage_router.post("/search_nearby")
-async def search_nearby(
-    input_data: GarageSearchInput,
-) -> Dict[str, Any]:
-    """Tìm garages gần vị trí — PUBLIC."""
-    data = await search_garages_nearby(
-        latitude=input_data.latitude, longitude=input_data.longitude,
-        max_distance_km=input_data.max_distance_km, min_tier=input_data.min_tier,
-        service_type=input_data.service_type,
+async def search_nearby(input_data: GarageSearchRequest) -> Dict[str, Any]:
+    """Tìm bãi gần vị trí kèm bộ lọc — PUBLIC."""
+    data = await search_garages(
+        lat=input_data.latitude, lng=input_data.longitude, radius_km=input_data.max_distance_km,
+        lot_types=input_data.lot_types, covered=input_data.covered, ev=input_data.ev,
+        min_height_m=input_data.min_height_m, guard_24h=input_data.guard_24h,
+        no_flood=input_data.no_flood, min_grade=input_data.min_grade,
+        max_hourly_price=input_data.max_hourly_price, service_type=input_data.service_type,
+        only_available=input_data.only_available,
     )
     return api_response(Operation.RETRIEVED, Resource.GARAGES, data)
 
@@ -89,15 +80,5 @@ async def update_garage_endpoint(
     current_user: dict = Depends(require_permission(["garage:edit"])),
 ) -> Dict[str, Any]:
     update_data = input_data.model_dump(exclude_unset=True, exclude={"id"})
-    await update_garage(input_data.id, update_data, current_user)
-    return api_response(Operation.UPDATED, Resource.GARAGE)
-
-
-@garage_router.post("/update_capacity")
-async def update_capacity_endpoint(
-    input_data: GarageCapacityInput,
-    current_user: dict = Depends(require_permission(["capacity:edit"])),
-) -> Dict[str, Any]:
-    capacity_data = input_data.model_dump(exclude={"id"})
-    await update_garage_capacity(input_data.id, capacity_data, current_user)
-    return api_response(Operation.UPDATED, Resource.GARAGE_CAPACITY)
+    data = await update_garage(input_data.id, update_data, current_user)
+    return api_response(Operation.UPDATED, Resource.GARAGE, data)
