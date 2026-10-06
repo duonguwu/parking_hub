@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Map, ParkingSquare, Users, Settings2, LogOut } from 'lucide-react'
+import { LayoutDashboard, Map, ParkingSquare, Users, Settings2, LogOut, Car, Building2 } from 'lucide-react'
 import { useAuth } from '@/services/auth-context'
 import { ROLE_LABEL } from '@/services/api'
 import { Brand } from '@/components/Brand'
@@ -38,6 +38,17 @@ export function AdminLayout() {
             ))}
           </nav>
           <div className="mt-auto border-t border-outline-variant pt-4">
+            {user?.role === 'super_admin' && (
+              <div className="mb-3">
+                <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Chuyển giao diện</p>
+                <Link to="/app" className="px-4 py-2 text-xs font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-full flex items-center gap-3">
+                  <Car className="w-4 h-4" /> Xem như tài xế
+                </Link>
+                <Link to="/garage" className="px-4 py-2 text-xs font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-full flex items-center gap-3">
+                  <Building2 className="w-4 h-4" /> Xem như chủ bãi
+                </Link>
+              </div>
+            )}
             <button onClick={onLogout} className="w-full px-4 py-2 text-xs font-medium text-on-surface-variant hover:text-error rounded-full flex items-center gap-3">
               <LogOut className="w-4 h-4" /> Đăng xuất
             </button>
@@ -52,6 +63,12 @@ export function AdminLayout() {
             <p className="text-xs font-bold">{user?.name || 'Quản trị viên'}</p>
             <p className="text-[10px] uppercase tracking-wider text-on-surface-variant">{ROLE_LABEL[user?.role ?? ''] ?? user?.role ?? ''}</p>
           </div>
+          {user?.role === 'super_admin' && (
+            <div className="flex md:hidden items-center gap-1">
+              <Link to="/app" title="Xem như tài xế" className="p-2 text-primary rounded-full"><Car className="w-5 h-5" /></Link>
+              <Link to="/garage" title="Xem như chủ bãi" className="p-2 text-primary rounded-full"><Building2 className="w-5 h-5" /></Link>
+            </div>
+          )}
           <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-xs">{initial}</div>
           <button onClick={onLogout} title="Đăng xuất" className="md:hidden p-2 text-on-surface-variant hover:text-error rounded-full"><LogOut className="w-5 h-5" /></button>
         </div>

@@ -24,7 +24,30 @@ const rawFetch = (path: string, options?: RequestInit) =>
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
   })
 
-export const apiFetch = async (path: string, options?: RequestInit) => {
+// Bãi đang thao tác trong cổng chủ bãi (chủ có nhiều bãi, hoặc super_admin xem như chủ bãi)
+const ACTIVE_GARAGE_KEY = 'ph_active_garage'
+export const activeGarage = {
+  get: (): string => localStorage.getItem(ACTIVE_GARAGE_KEY) || '',
+  name: (): string => localStorage.getItem(`${ACTIVE_GARAGE_KEY}_name`) || '',
+  set: (id: string, name = '') => {
+    localStorage.setItem(ACTIVE_GARAGE_KEY, id)
+    localStorage.setItem(`${ACTIVE_GARAGE_KEY}_name`, name)
+  },
+  clear: () => {
+    localStorage.removeItem(ACTIVE_GARAGE_KEY)
+    localStorage.removeItem(`${ACTIVE_GARAGE_KEY}_name`)
+  },
+}
+
+/** Gắn garage_id vào các request của cổng chủ bãi khi đã chọn bãi. */
+const withActiveGarage = (path: string): string => {
+  const id = activeGarage.get()
+  if (!id || !path.startsWith('/garage-portal') || path.startsWith('/garage-portal/garages') || path.includes('garage_id=')) return path
+  return `${path}${path.includes('?') ? '&' : '?'}garage_id=${encodeURIComponent(id)}`
+}
+
+export const apiFetch = async (rawPath: string, options?: RequestInit) => {
+  const path = withActiveGarage(rawPath)
   const res = await rawFetch(path, options)
   if (res.status !== 401 || NO_REFRESH_PATHS.some((p) => path.startsWith(p))) return res
   // Access token hết hạn → thử refresh một lần rồi gửi lại request
@@ -773,6 +796,10 @@ export const matchingApi = {
 // ── Garage owner (chủ bãi) API ─────────────────────────────────────────────
 
 export const garageApi = {
+  accessibleGarages: (q = '') =>
+    request<{ id: string; name: string; district: string; status: string; lot_type: string }[]>(
+      `/garage-portal/garages${qs({ q })}`, 'Không tải được danh sách bãi'),
+
   myGarage: () => request<Garage>('/garage-portal/garage', 'Không tải được hồ sơ bãi'),
 
   updateGarage: (data: GarageProfileUpdate) =>

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useAuth } from '@/services/auth-context'
 
 // Layouts
@@ -64,6 +65,25 @@ function homeForRole(role: string): string {
   return '/admin'
 }
 
+/** Bắt lỗi render để không bị trắng trang: hiện thông báo kèm nút tải lại. */
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('UI error:', error, info.componentStack) }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md text-center space-y-3">
+          <h1 className="text-lg font-bold text-slate-800">Trang gặp lỗi hiển thị</h1>
+          <p className="text-sm text-slate-500">{this.state.error.message}</p>
+          <button onClick={() => window.location.assign('/')} className="px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-semibold">Về trang chủ</button>
+        </div>
+      </div>
+    )
+  }
+}
+
 function RoleRedirect() {
   const { user, loading } = useAuth()
   if (loading) return null
@@ -75,13 +95,14 @@ function App() {
   return (
     <BrowserRouter>
       <OfflineBanner />
+      <ErrorBoundary>
       <Routes>
         {/* ── Auth ── */}
         <Route path="/login" element={<LoginPage />} />
 
         {/* ── Customer Routes ── */}
         <Route path="/app" element={
-          <ProtectedRoute allowedRoles={CUSTOMER_ROLES}>
+          <ProtectedRoute allowedRoles={[...CUSTOMER_ROLES, 'super_admin']}>
             <CustomerLayout />
           </ProtectedRoute>
         }>
@@ -96,7 +117,7 @@ function App() {
 
         {/* ── Garage Owner Routes ── */}
         <Route path="/garage" element={
-          <ProtectedRoute allowedRoles={['garage_owner', 'garage_manager', 'garage_staff']}>
+          <ProtectedRoute allowedRoles={[...GARAGE_ROLES, 'super_admin']}>
             <GarageLayout />
           </ProtectedRoute>
         }>
@@ -126,6 +147,7 @@ function App() {
         <Route path="/" element={<RoleRedirect />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </ErrorBoundary>
 
       {/* ── PWA UI Elements ── */}
       <PWABadge />

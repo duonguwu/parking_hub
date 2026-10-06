@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { MapPin, Calendar, Home, CarFront, User as UserIcon, Plus, ChevronDown, LogOut } from 'lucide-react'
+import { MapPin, Calendar, Home, CarFront, User as UserIcon, Plus, ChevronDown, LogOut, ShieldCheck } from 'lucide-react'
 import { ROLE_LABEL } from '@/services/api'
 import { cn } from '@/services/utils'
 import { Brand } from '@/components/Brand'
@@ -106,6 +106,12 @@ export function CustomerLayout() {
                     <p className="text-xs font-bold text-on-surface">{user?.name ?? 'Khách'}</p>
                     <p className="text-[10px] text-on-surface-variant uppercase">{ROLE_LABEL[user?.role ?? ''] ?? user?.role ?? ''}</p>
                   </div>
+                  {user?.role === 'super_admin' && (
+                    <Link to="/admin" onClick={() => setShowMenu(false)}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-primary hover:bg-surface-container-low transition-colors">
+                      <ShieldCheck className="w-4 h-4" /> Về trang quản trị
+                    </Link>
+                  )}
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-error hover:bg-error-container/30 transition-colors"
