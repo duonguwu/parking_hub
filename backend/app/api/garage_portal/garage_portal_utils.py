@@ -1,62 +1,56 @@
 # -*- coding: utf-8 -*-
 """
-Garage Owner Portal — Business logic helpers.
+Garage Owner Portal — nghiệp vụ cho chủ bãi.
 
-All data is scoped to the current user's tenant garage.
-Reuses existing models/utils; no duplication with core operations.
+Mọi dữ liệu giới hạn trong bãi của tenant hiện tại.
+Tái sử dụng booking_utils / capacity_utils / garage_utils, không lặp logic.
 """
 import logging
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
-from bson import ObjectId
 from fastapi import HTTPException
 
 from app.api.booking.booking_models import BookingModel
+from app.api.booking.booking_utils import enrich_bookings, sweep_overdue, compute_final_price, normalize_plate
 from app.api.capacity.capacity_models import CapacitySnapshotModel
+from app.api.capacity.capacity_utils import get_availability, hourly_rates
 from app.api.garage.garage_models import GarageModel
+from app.api.garage.garage_classification_utils import (
+    compute_grade, GRADE_CHECKLIST, GRADE_GROUPS, INTEGRATION_LEVELS, compute_badges,
+)
+from app.api.garage.garage_stats_utils import MIN_SESSIONS_FOR_SCORE
 from app.api.garage_service.garage_service_models import GarageServiceModel
-from app.api.garage_service.garage_service_utils import format_garage_service, upsert_garage_service
-from app.api.service_type.service_type_models import ServiceTypeModel
-from app.api.user.user_models import UserModel
-from app.api.vehicle.vehicle_models import VehicleModel
+from app.api.garage_service.garage_service_utils import upsert_garage_service, resolve_pricing
+from app.api.garage_service.pricing_utils import to_local, LOCAL_TZ
+from app.api.service_type.service_type_utils import get_service_type_by_code, get_service_type_map
 from app.api.shared.tool.datetime_convert import get_current_time
 from app.api.shared.tool.convert_object_id import convert_mongo_object_id
 
 logger = logging.getLogger(__name__)
 
-# ── Icon mapping for service types ───────────────────────────────
-_ICON_MAP = {
-    "park_hourly": "clock",
-    "park_overnight": "moon",
-    "park_daily": "calendar-days",
-    "park_monthly": "credit-card",
-}
-
-# ── Tier labels ──────────────────────────────────────────────────
-_TIER_NAMES = {1: "Basic", 2: "Standard", 3: "Pro", 4: "Elite"}
-
-# ── Tier next-level requirements ────────────────────────────────
-_TIER_REQUIREMENTS = {
-    2: {"avg_rating": 3.5, "training_certs": 3},
-    3: {"avg_rating": 4.2, "training_certs": 5},
-    4: {"avg_rating": 4.7, "training_certs": 8},
-}
+DOW_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
 
 
 def _parse_range_days(range_str: str) -> int:
-    return {"7D": 7, "30D": 30, "90D": 90, "1Y": 365}.get((range_str or "30D").upper(), 30)
+    return {"7D": 7, "30D": 30, "90D": 90}.get((range_str or "30D").upper(), 30)
+
+
+def _local_day_start(now: datetime) -> datetime:
+    """00:00 hôm nay theo giờ VN, trả về aware datetime."""
+    local = to_local(now)
+    return LOCAL_TZ.localize(datetime(local.year, local.month, local.day))
+
+
+def _revenue(b: dict) -> int:
+    return int(b.get("final_price") if b.get("final_price") is not None else 0)
 
 
 # ── Garage Resolution ────────────────────────────────────────────
 
 async def get_garage_for_user(current_user: dict, garage_id_override: Optional[str] = None) -> dict:
-    """Resolve the garage document for the authenticated user.
-
-    For super_admin: garage_id_override is required.
-    For tenant roles: find first active garage by tenant_id.
-    """
+    """Bãi của user hiện tại. super_admin phải truyền garage_id."""
     if garage_id_override:
         oid = convert_mongo_object_id(garage_id_override)
         if not oid:
@@ -72,478 +66,293 @@ async def get_garage_for_user(current_user: dict, garage_id_override: Optional[s
     tenant_id = current_user.get("tenant_id")
     if not tenant_id or tenant_id == "super_admin":
         raise HTTPException(status_code=400, detail="Provide garage_id for super_admin access")
+    if current_user.get("role") not in ("garage_owner", "garage_manager", "garage_staff"):
+        raise HTTPException(status_code=403, detail="Chỉ dành cho nhân sự bãi đỗ")
 
-    garage = await GarageModel.collection.find_one({"tenant_id": tenant_id, "status": "active"})
+    garage = await GarageModel.collection.find_one(
+        {"tenant_id": tenant_id, "status": {"$ne": "deleted"}}, sort=[("status", 1)],
+    )
     if not garage:
-        raise HTTPException(status_code=404, detail="No active garage found for your account")
+        raise HTTPException(status_code=404, detail="Tài khoản chưa có bãi đỗ")
     return garage
 
 
-# ── Dashboard Overview ───────────────────────────────────────────
+# ── Dashboard ────────────────────────────────────────────────────
 
 async def get_dashboard_overview(garage: dict) -> dict:
-    garage_oid = garage["_id"]
+    gid = garage["_id"]
+    await sweep_overdue(garage_oid=gid)
     now = get_current_time()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start + timedelta(days=1)
-    yesterday_start = today_start - timedelta(days=1)
-    cancelled_statuses = ["cancelled_by_customer", "cancelled_by_garage", "expired", "no_show"]
+    today = _local_day_start(now)
+    yesterday = today - timedelta(days=1)
 
-    # Today's cars (non-cancelled)
-    todays_count = await BookingModel.collection.count_documents({
-        "garage_id": garage_oid,
-        "created_at": {"$gte": today_start, "$lt": today_end},
-        "status": {"$nin": cancelled_statuses},
+    availability = await get_availability(garage)
+    inside = await BookingModel.collection.count_documents({"garage_id": gid, "status": "checked_in"})
+    pending = await BookingModel.collection.count_documents({"garage_id": gid, "status": "pending"})
+
+    upcoming_docs = await BookingModel.collection.find({
+        "garage_id": gid, "status": {"$in": ["reserved", "pending"]},
+        "start_time": {"$gte": now - timedelta(minutes=30), "$lte": now + timedelta(hours=2)},
+    }).sort("start_time", 1).to_list(length=20)
+
+    def _sum(docs):
+        return sum(_revenue(b) for b in docs)
+
+    out_today = await BookingModel.collection.find({
+        "garage_id": gid, "status": "checked_out", "timestamps.checked_out_at": {"$gte": today},
+    }, {"final_price": 1}).to_list(length=None)
+    out_yday = await BookingModel.collection.find({
+        "garage_id": gid, "status": "checked_out",
+        "timestamps.checked_out_at": {"$gte": yesterday, "$lt": today},
+    }, {"final_price": 1}).to_list(length=None)
+    unpaid = await BookingModel.collection.count_documents({
+        "garage_id": gid, "status": "checked_out", "payment_status": "unpaid",
     })
-    yesterday_count = await BookingModel.collection.count_documents({
-        "garage_id": garage_oid,
-        "created_at": {"$gte": yesterday_start, "$lt": today_start},
-        "status": {"$nin": cancelled_statuses},
-    })
 
-    total_bays = int((garage.get("capacity") or {}).get("total_bays", 2))
-    daily_capacity = max(total_bays * 8, 1)
-    capacity_pct = min(100, int((todays_count / daily_capacity) * 100))
-    if yesterday_count > 0:
-        delta = int(((todays_count - yesterday_count) / yesterday_count) * 100)
-        car_trend = f"+{delta}%" if delta >= 0 else f"{delta}%"
-    else:
-        car_trend = "+0%"
+    # Lấp đầy 24 giờ qua theo snapshot
+    snaps = await CapacitySnapshotModel.collection.find({
+        "garage_id": gid, "timestamp": {"$gte": now - timedelta(hours=24)},
+    }).sort("timestamp", 1).to_list(length=48)
+    fill_24h = [{"time": to_local(s["timestamp"]).strftime("%H:00"),
+                 "rate": round(float(s.get("occupancy_rate") or 0), 3)} for s in snaps]
 
-    # Revenue today (completed)
-    today_completed = await BookingModel.collection.find({
-        "garage_id": garage_oid,
-        "status": "completed",
-        "timestamps.service_completed_at": {"$gte": today_start, "$lt": today_end},
-    }).to_list(length=None)
-    revenue_today = sum(int(b.get("price", 0)) for b in today_completed)
-
-    yesterday_completed = await BookingModel.collection.find({
-        "garage_id": garage_oid,
-        "status": "completed",
-        "timestamps.service_completed_at": {"$gte": yesterday_start, "$lt": today_start},
-    }).to_list(length=None)
-    revenue_yesterday = sum(int(b.get("price", 0)) for b in yesterday_completed)
-    revenue_trend = "UP" if revenue_today >= revenue_yesterday else "DOWN"
-
-    # Revenue sparkline (last 5 days including today)
-    sparkline = []
-    for i in range(4, -1, -1):
-        ds = today_start - timedelta(days=i)
-        de = ds + timedelta(days=1)
-        day_docs = await BookingModel.collection.find({
-            "garage_id": garage_oid,
-            "status": "completed",
-            "timestamps.service_completed_at": {"$gte": ds, "$lt": de},
-        }).to_list(length=None)
-        sparkline.append(sum(int(b.get("price", 0)) for b in day_docs))
-
-    # Match score from garage stats
-    stats = garage.get("stats") or {}
-    avg_rating = round(float(stats.get("avg_rating") or 4.5), 1)
-    total_reviews = int(stats.get("total_services") or 0)
-
-    # Fill rate from current_load
-    current_load = garage.get("current_load") or {}
-    in_service = int(current_load.get("vehicles_in_service") or 0)
-    waiting = int(current_load.get("vehicles_waiting") or 0)
-    fill_rate = min(100, int(((in_service + waiting) / max(total_bays, 1)) * 100))
-    remaining = max(0, total_bays - in_service - waiting)
-
-    if fill_rate >= 80 or capacity_pct >= 80:
-        status = "LIVE PEAK"
-    elif fill_rate >= 40 or capacity_pct >= 40:
-        status = "NORMAL"
-    else:
-        status = "SLOW"
-
-    avg_time_mins = int(stats.get("avg_actual_processing_minutes") or 0)
-
+    level = int(garage.get("integration_level") or 1)
     return {
-        "status": status,
-        "kpis": {
-            "todays_cars": {"value": todays_count, "trend": car_trend, "capacity_percent": capacity_pct},
-            "revenue": {"value": revenue_today, "trend": revenue_trend, "sparkline": sparkline},
-            "match_score": {"value": avg_rating, "total_reviews": total_reviews},
-            "fill_rate": {"value": fill_rate, "remaining_capacity": remaining},
+        "garage": {
+            "id": str(gid), "name": garage.get("name", ""), "status": garage.get("status"),
+            "integration_level": level,
+            "integration_label": INTEGRATION_LEVELS.get(level, {}).get("name", ""),
+            "is_accepting_bookings": garage.get("is_accepting_bookings", True),
         },
-        "bottom_stats": {
-            "efficiency": {
-                "avg_service_time_seconds": avg_time_mins * 60,
-                "trend_text": "Within normal range" if avg_time_mins > 0 else "No data yet",
-            },
-            "resources": {
-                "water_usage_liters": todays_count * 50,
-                "status": "Within blueprint limits",
-            },
-            "conversion": {
-                "new_subscriptions": todays_count,
-                "trend_text": f"+{todays_count} new leads today",
-            },
+        "availability": availability,
+        "inside_count": inside,
+        "pending_count": pending,
+        "upcoming": await enrich_bookings(upcoming_docs),
+        "revenue": {
+            "today": _sum(out_today), "yesterday": _sum(out_yday),
+            "sessions_today": len(out_today), "unpaid_count": unpaid,
         },
+        "fill_24h": fill_24h,
     }
 
-
-# ── Capacity Chart ───────────────────────────────────────────────
 
 async def get_capacity_chart(garage: dict, range_str: str) -> dict:
-    garage_oid = garage["_id"]
+    """24H: lấp đầy từng giờ hôm nay. 7D: trung bình theo giờ trong tuần (T2..CN)."""
+    if (range_str or "24H").upper() == "7D":
+        rates = await hourly_rates(garage)
+        return {"range": "7D", "labels": [f"{r['hour']:02d}:00" for r in rates],
+                "data": [round(r["rate"] * 100) for r in rates]}
     now = get_current_time()
-    total_bays = max(int((garage.get("capacity") or {}).get("total_bays", 2)), 1)
-
-    if range_str == "24H":
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        snapshots = await CapacitySnapshotModel.collection.find({
-            "garage_id": garage_oid,
-            "timestamp": {"$gte": today_start, "$lt": today_start + timedelta(days=1)},
-        }).to_list(length=500)
-
-        hour_loads: dict[int, list] = defaultdict(list)
-        for s in snapshots:
-            h = int(s.get("hour_of_day", 0))
-            load = int(s.get("vehicles_in_service", 0)) + int(s.get("vehicles_waiting", 0))
-            hour_loads[h].append(load)
-
-        labels = [f"{h:02d}:00" for h in range(24)]
-        data = []
-        for h in range(24):
-            if hour_loads[h]:
-                avg = sum(hour_loads[h]) / len(hour_loads[h])
-                data.append(min(100, int((avg / total_bays) * 100)))
-            else:
-                data.append(0)
-
-        return {"range": "24H", "labels": labels, "data": data}
-
-    else:  # 7D
-        week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=6)
-        snapshots = await CapacitySnapshotModel.collection.find({
-            "garage_id": garage_oid,
-            "timestamp": {"$gte": week_start},
-        }).to_list(length=2000)
-
-        day_loads: dict[str, list] = defaultdict(list)
-        for s in snapshots:
-            ts = s.get("timestamp")
-            if ts:
-                day_key = ts.strftime("%Y-%m-%d")
-                load = int(s.get("vehicles_in_service", 0)) + int(s.get("vehicles_waiting", 0))
-                day_loads[day_key].append(load)
-
-        labels = []
-        data = []
-        for i in range(6, -1, -1):
-            d = now - timedelta(days=i)
-            key = d.strftime("%Y-%m-%d")
-            label = d.strftime("%a")
-            labels.append(label)
-            if day_loads[key]:
-                avg = sum(day_loads[key]) / len(day_loads[key])
-                data.append(min(100, int((avg / total_bays) * 100)))
-            else:
-                data.append(0)
-
-        return {"range": "7D", "labels": labels, "data": data}
+    today = _local_day_start(now)
+    snaps = await CapacitySnapshotModel.collection.find({
+        "garage_id": garage["_id"], "timestamp": {"$gte": today},
+    }).to_list(length=48)
+    by_hour = {s.get("hour_of_day"): s for s in snaps}
+    return {"range": "24H", "labels": [f"{h:02d}:00" for h in range(24)],
+            "data": [round(float(by_hour[h]["occupancy_rate"]) * 100) if h in by_hour else None for h in range(24)]}
 
 
-# ── Queue ────────────────────────────────────────────────────────
+# ── Bookings (lượt đặt & vào/ra) ─────────────────────────────────
 
-async def get_queue(garage: dict, filter_str: str, page: int, limit: int) -> dict:
-    garage_oid = garage["_id"]
-    now = get_current_time()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start + timedelta(days=1)
-    cancelled_statuses = ["cancelled_by_customer", "cancelled_by_garage", "expired", "no_show"]
+BOOKING_TABS = {
+    "upcoming": {"status": "reserved"},
+    "pending": {"status": "pending"},
+    "inside": {"status": "checked_in"},
+    "history": {"status": {"$in": ["checked_out", "cancelled", "rejected", "no_show", "expired"]}},
+}
 
-    # Build query
-    query: dict = {"garage_id": garage_oid}
-    if filter_str == "today":
-        query["created_at"] = {"$gte": today_start, "$lt": today_end}
-        query["status"] = {"$nin": cancelled_statuses}
-    elif filter_str == "pending":
-        query["status"] = "pending"
-    # "all" → no extra filter
 
-    total_items = await BookingModel.collection.count_documents(query)
-    skip = (page - 1) * limit
-    total_pages = max(1, -(-total_items // limit))  # ceiling division
+async def get_portal_bookings(garage: dict, tab: str, q: Optional[str], page: int, limit: int) -> dict:
+    gid = garage["_id"]
+    await sweep_overdue(garage_oid=gid)
+    if tab not in BOOKING_TABS:
+        tab = "upcoming"
+    query: dict = {"garage_id": gid, **BOOKING_TABS[tab]}
+    plate = normalize_plate(q)
+    if plate:
+        query["$or"] = [{"license_plate": {"$regex": plate}}, {"booking_code": {"$regex": plate}}]
 
-    bookings = await BookingModel.collection.find(query).sort(
-        "requested_time", 1
-    ).skip(skip).limit(limit).to_list(length=limit)
+    sort = [("start_time", 1)] if tab in ("upcoming", "pending") else [("start_time", -1)]
+    if tab == "inside":
+        sort = [("timestamps.checked_in_at", 1)]
+    total = await BookingModel.collection.count_documents(query)
+    docs = await BookingModel.collection.find(query).sort(sort).skip((page - 1) * limit).limit(limit).to_list(length=limit)
+    items = await enrich_bookings(docs)
 
-    # Hero stats (always scoped to today)
-    today_query = {
-        "garage_id": garage_oid,
-        "created_at": {"$gte": today_start, "$lt": today_end},
-        "status": {"$nin": cancelled_statuses},
-    }
-    active_count = await BookingModel.collection.count_documents({
-        **today_query,
-        "status": {"$in": ["confirmed", "customer_arriving", "customer_arrived", "in_service"]},
-    })
-    pending_count = await BookingModel.collection.count_documents({
-        "garage_id": garage_oid,
-        "status": "pending",
-    })
-    total_bays = max(int((garage.get("capacity") or {}).get("total_bays", 2)), 1)
+    # Ước tính tiền hiện tại cho xe đang trong bãi
+    if tab == "inside":
+        for item, d in zip(items, docs):
+            item["current_charge"] = (await compute_final_price(d))["amount"]
 
-    today_total = await BookingModel.collection.count_documents(today_query)
-    capacity_pct = min(100, int((today_total / max(total_bays * 8, 1)) * 100))
-
-    # Batch-load users, vehicles, service types for enrichment
-    customer_ids = [b["customer_id"] for b in bookings if b.get("customer_id")]
-    vehicle_ids = [b["vehicle_id"] for b in bookings if b.get("vehicle_id")]
-    service_codes = list({b.get("service_type_code", "") for b in bookings})
-
-    user_docs = {}
-    if customer_ids:
-        for u in await UserModel.collection.find({"_id": {"$in": customer_ids}}).to_list(length=len(customer_ids)):
-            user_docs[u["_id"]] = u
-
-    vehicle_docs = {}
-    if vehicle_ids:
-        for v in await VehicleModel.collection.find({"_id": {"$in": vehicle_ids}}).to_list(length=len(vehicle_ids)):
-            vehicle_docs[v["_id"]] = v
-
-    stype_docs = {}
-    if service_codes:
-        for st in await ServiceTypeModel.collection.find({"code": {"$in": service_codes}}).to_list(length=len(service_codes)):
-            stype_docs[st["code"]] = st
-
-    gsvc_docs = {}
-    if service_codes:
-        for gs in await GarageServiceModel.collection.find({
-            "garage_id": garage_oid,
-            "service_type_code": {"$in": service_codes},
-        }).to_list(length=len(service_codes)):
-            gsvc_docs[gs["service_type_code"]] = gs
-
-    items = []
-    for b in bookings:
-        cid = b.get("customer_id")
-        vid = b.get("vehicle_id")
-        code = b.get("service_type_code", "")
-        user = user_docs.get(cid) if cid else None
-        vehicle = vehicle_docs.get(vid) if vid else None
-        stype = stype_docs.get(code)
-        gsvc = gsvc_docs.get(code)
-
-        customer_name = user.get("name", "Unknown") if user else "Unknown"
-
-        vehicle_info = {
-            "type": (vehicle.get("vehicle_type", "car") if vehicle else "car"),
-            "name": (f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip() if vehicle else ""),
-            "plate": (vehicle.get("license_plate", "") if vehicle else ""),
-        }
-
-        duration_min = int((gsvc or {}).get("estimated_duration_minutes") or 30)
-        rt = b.get("requested_time")
-        eta = ""
-        if rt:
-            eta_dt = rt + timedelta(minutes=duration_min)
-            eta = eta_dt.strftime("%H:%M")
-
-        service_info = {
-            "name": (stype.get("name", code) if stype else code),
-            "description": (stype.get("description", "") if stype else ""),
-            "eta": eta,
-        }
-
-        items.append({
-            "id": b.get("booking_code", str(b["_id"])),
-            "appointment_time": rt.isoformat() if rt else None,
-            "customer_name": customer_name,
-            "vehicle": vehicle_info,
-            "service": service_info,
-            "status": b.get("status", "pending"),
-        })
-
-    # AI insight
-    ai_insight = _generate_ai_insight(bookings, now)
+    counts = {}
+    for k, cond in BOOKING_TABS.items():
+        if k == "history":
+            continue
+        counts[k] = await BookingModel.collection.count_documents({"garage_id": gid, **cond})
 
     return {
-        "hero_stats": {
-            "capacity_percent": capacity_pct,
-            "active_bookings": active_count,
-            "pending_approval": pending_count,
-        },
-        "ai_insight": ai_insight,
-        "pagination": {
-            "current_page": page,
-            "total_pages": total_pages,
-            "total_items": total_items,
-        },
+        "tab": tab,
+        "counts": counts,
+        "integration_level": int(garage.get("integration_level") or 1),
+        "pagination": {"current_page": page, "total_pages": max(1, -(-total // limit)), "total_items": total},
         "items": items,
-    }
-
-
-def _generate_ai_insight(bookings: list, now: datetime) -> dict:
-    if not bookings:
-        return {"title": "Queue Status", "message": "No bookings in this view. Ready to accept new customers."}
-
-    hour_counts: dict[int, int] = defaultdict(int)
-    for b in bookings:
-        rt = b.get("requested_time")
-        if rt:
-            hour_counts[rt.hour] += 1
-
-    if hour_counts:
-        peak_hour = max(hour_counts, key=lambda h: hour_counts[h])
-        peak_count = hour_counts[peak_hour]
-        if peak_count >= 3:
-            end_hour = (peak_hour + 3) % 24
-            return {
-                "title": "Coordination Insight",
-                "message": (
-                    f"High volume expected between {peak_hour:02d}:00 and {end_hour:02d}:00 today "
-                    f"({peak_count} bookings). We recommend assigning an extra technician for that window."
-                ),
-            }
-
-    return {
-        "title": "Queue Status",
-        "message": f"{len(bookings)} booking(s) in queue. Operations are running smoothly.",
     }
 
 
 # ── Analytics ────────────────────────────────────────────────────
 
 async def get_analytics(garage: dict, range_str: str) -> dict:
-    garage_oid = garage["_id"]
-    range_days = _parse_range_days(range_str)
+    gid = garage["_id"]
+    days = _parse_range_days(range_str)
     now = get_current_time()
-    period_start = now - timedelta(days=range_days)
-    prev_start = period_start - timedelta(days=range_days)
-    cancelled_statuses = ["cancelled_by_customer", "cancelled_by_garage", "no_show"]
+    today = _local_day_start(now)
+    start = today - timedelta(days=days - 1)
+    prev_start = start - timedelta(days=days)
 
-    all_docs = await BookingModel.collection.find({
-        "garage_id": garage_oid,
-        "created_at": {"$gte": period_start},
-    }).to_list(length=10000)
+    docs = await BookingModel.collection.find({
+        "garage_id": gid, "start_time": {"$gte": prev_start},
+    }).to_list(length=50000)
+    cur = [b for b in docs if b["start_time"] >= start]
+    prev = [b for b in docs if b["start_time"] < start]
 
-    prev_docs = await BookingModel.collection.find({
-        "garage_id": garage_oid,
-        "created_at": {"$gte": prev_start, "$lt": period_start},
-    }).to_list(length=10000)
+    def sessions(lst):
+        return [b for b in lst if b.get("status") == "checked_out"]
 
-    completed = [b for b in all_docs if b.get("status") == "completed"]
-    cancelled = [b for b in all_docs if b.get("status") in cancelled_statuses]
-    prev_completed = [b for b in prev_docs if b.get("status") == "completed"]
+    cur_s, prev_s = sessions(cur), sessions(prev)
+    revenue = sum(_revenue(b) for b in cur_s)
+    prev_revenue = sum(_revenue(b) for b in prev_s)
 
-    gross_revenue = sum(int(b.get("price", 0)) for b in completed)
-    prev_revenue = sum(int(b.get("price", 0)) for b in prev_completed)
-    active_count = len([b for b in all_docs if b.get("status") not in (cancelled_statuses + ["expired"])])
-    prev_active = len([b for b in prev_docs if b.get("status") not in (cancelled_statuses + ["expired"])])
+    def trend(a, b):
+        if not b:
+            return None
+        return round((a - b) / b * 100, 1)
 
-    # Revenue trend
-    rev_trend, rev_up = _compute_trend(gross_revenue, prev_revenue)
-    booking_trend, booking_up = _compute_trend(active_count, prev_active)
+    # Doanh thu theo ngày
+    by_day = defaultdict(int)
+    for b in cur_s:
+        ts = (b.get("timestamps") or {}).get("checked_out_at") or b["start_time"]
+        by_day[to_local(ts).strftime("%Y-%m-%d")] += _revenue(b)
+    labels, rev_data = [], []
+    for i in range(days):
+        d = to_local(start + timedelta(days=i))
+        labels.append(d.strftime("%d/%m"))
+        rev_data.append(by_day.get(d.strftime("%Y-%m-%d"), 0))
 
-    # Customer satisfaction
-    rated = [b for b in completed if b.get("feedback", {}).get("rating")]
-    avg_sat = (sum(b["feedback"]["rating"] for b in rated) / len(rated)) if rated else 0.0
+    # Thời lượng gửi trung bình (phút)
+    durations = []
+    for b in cur_s:
+        t = b.get("timestamps") or {}
+        if t.get("checked_in_at") and t.get("checked_out_at"):
+            durations.append((t["checked_out_at"] - t["checked_in_at"]).total_seconds() / 60)
+    avg_duration = round(sum(durations) / len(durations)) if durations else 0
 
-    # Conversion rate
-    total = len(all_docs)
-    conversion = ((total - len(cancelled)) / max(total, 1)) * 100
+    # Nguồn lượt
+    src = Counter(b.get("source", "app") for b in cur_s)
+    # Dịch vụ
+    stype_map = await get_service_type_map()
+    svc = Counter(b.get("service_type_code") for b in cur_s)
+    services = [{"code": c, "name": stype_map.get(c, {}).get("name", c), "count": n,
+                 "revenue": sum(_revenue(b) for b in cur_s if b.get("service_type_code") == c)}
+                for c, n in svc.most_common()]
 
-    # Revenue chart
-    labels, chart_data = _build_revenue_chart(completed, range_days, now)
+    # Trạng thái lượt đặt qua app
+    app_bookings = [b for b in cur if b.get("source") != "walk_in"]
+    status_counts = Counter(b.get("status") for b in app_bookings)
 
-    # Customer retention
-    cust_counts = Counter(str(b.get("customer_id", "")) for b in all_docs if b.get("customer_id"))
-    returning_count = sum(1 for cnt in cust_counts.values() if cnt > 1)
-    new_count = len(cust_counts) - returning_count
-    total_custs = len(cust_counts)
-    returning_pct = int((returning_count / max(total_custs, 1)) * 100)
+    # Lấp đầy theo giờ: ngày thường vs cuối tuần
+    weekday = await hourly_rates(garage, day_of_week=2)
+    weekend = await hourly_rates(garage, day_of_week=6)
 
-    # Service distribution (enrich code → name)
-    svc_counts = Counter(b.get("service_type_code", "unknown") for b in all_docs)
-    total_svc = sum(svc_counts.values()) or 1
-    top_codes = [code for code, _ in svc_counts.most_common(5)]
-    stype_map = {}
-    if top_codes:
-        for st in await ServiceTypeModel.collection.find({"code": {"$in": top_codes}}).to_list(length=10):
-            stype_map[st["code"]] = st.get("name", st["code"])
-
-    distribution = []
-    total_so_far = 0
-    for i, (code, count) in enumerate(svc_counts.most_common(3)):
-        pct = int((count / total_svc) * 100)
-        total_so_far += pct
-        distribution.append({
-            "name": stype_map.get(code, code),
-            "percentage": pct if i < 2 else max(0, 100 - total_so_far + pct),
-        })
+    # Khách quay lại
+    per_cust = Counter(str(b["customer_id"]) for b in cur_s if b.get("customer_id"))
+    returning = sum(1 for n in per_cust.values() if n >= 2)
 
     return {
+        "range": f"{days}D",
         "metrics": {
-            "gross_revenue": {"value": gross_revenue, "trend": rev_trend, "is_up": rev_up},
-            "active_bookings": {"value": active_count, "trend": booking_trend, "is_up": booking_up},
-            "customer_sat": {"value": round(avg_sat, 2), "trend": "MAX" if avg_sat >= 4.9 else f"{avg_sat:.1f}", "is_up": avg_sat >= 4.0},
-            "conversion_rate": {"value": round(conversion, 1), "trend": f"{conversion:.1f}%", "is_up": conversion >= 80},
+            "revenue": {"value": revenue, "trend": trend(revenue, prev_revenue)},
+            "sessions": {"value": len(cur_s), "trend": trend(len(cur_s), len(prev_s))},
+            "avg_duration_minutes": avg_duration,
+            "avg_ticket": round(revenue / len(cur_s)) if cur_s else 0,
         },
-        "revenue_chart": {"labels": labels, "data": chart_data},
-        "customer_retention": {
-            "returning_percentage": returning_pct,
-            "returning_count": returning_count,
-            "new_count": new_count,
+        "revenue_chart": {"labels": labels, "data": rev_data},
+        "source_split": {"app": src.get("app", 0) + src.get("matching", 0), "walk_in": src.get("walk_in", 0)},
+        "services": services,
+        "booking_status": dict(status_counts),
+        "occupancy_by_hour": {
+            "labels": [f"{h:02d}h" for h in range(24)],
+            "weekday": [round(r["rate"] * 100) for r in weekday],
+            "weekend": [round(r["rate"] * 100) for r in weekend],
         },
-        "service_distribution": distribution,
+        "customers": {"total": len(per_cust), "returning": returning},
     }
 
 
-def _compute_trend(current: float, previous: float) -> tuple[str, bool]:
-    if previous == 0:
-        return ("+0%", True)
-    delta = ((current - previous) / previous) * 100
-    is_up = delta >= 0
-    return (f"+{delta:.1f}%" if is_up else f"{delta:.1f}%", is_up)
+# ── Quality / score ──────────────────────────────────────────────
 
+def get_score_data(garage: dict) -> dict:
+    stats = garage.get("stats") or {}
+    level = int(garage.get("integration_level") or 1)
+    assessment = garage.get("grade_assessment") or {}
+    grade_info = compute_grade(assessment.get("items"))
+    enough = int(stats.get("total_sessions") or 0) >= MIN_SESSIONS_FOR_SCORE
 
-def _build_revenue_chart(completed: list, range_days: int, now: datetime) -> tuple[list, list]:
-    if range_days <= 7:
-        # Daily
-        day_rev: dict[str, int] = defaultdict(int)
-        for b in completed:
-            ts = (b.get("timestamps") or {}).get("service_completed_at") or b.get("created_at")
-            if ts:
-                day_rev[ts.strftime("%Y-%m-%d")] += int(b.get("price", 0))
-        labels = []
-        data = []
-        for i in range(range_days - 1, -1, -1):
-            d = now - timedelta(days=i)
-            key = d.strftime("%Y-%m-%d")
-            labels.append(d.strftime("%a"))
-            data.append(day_rev.get(key, 0))
-    elif range_days <= 30:
-        # Weekly (last 4-5 weeks)
-        week_rev: dict[str, int] = defaultdict(int)
-        for b in completed:
-            ts = (b.get("timestamps") or {}).get("service_completed_at") or b.get("created_at")
-            if ts:
-                week_start = ts - timedelta(days=ts.weekday())
-                week_rev[week_start.strftime("%Y-%m-%d")] += int(b.get("price", 0))
-        weeks = sorted(week_rev.keys())[-5:]
-        labels = [f"W{i + 1}" for i in range(len(weeks))]
-        data = [week_rev[w] for w in weeks]
+    tips = []
+    if enough:
+        if float(stats.get("fulfillment_rate") or 0) < 0.95:
+            tips.append("Tỉ lệ giữ đúng chỗ dưới 95%. Hạn chế huỷ lượt đã xác nhận, cập nhật chỗ trống thường xuyên hơn.")
+        if int(stats.get("complaint_count") or 0) > 0:
+            tips.append(f"Có {stats.get('complaint_count')} lượt khiếu nại / đánh giá thấp. Xem lại phản hồi của khách trong mục Lượt đặt.")
+        if float(stats.get("return_rate") or 0) < 0.3:
+            tips.append("Tỉ lệ khách quay lại thấp. Cân nhắc gói ngày làm việc hoặc gói tháng cho khách quen.")
     else:
-        # Monthly
-        month_rev: dict[str, int] = defaultdict(int)
-        for b in completed:
-            ts = (b.get("timestamps") or {}).get("service_completed_at") or b.get("created_at")
-            if ts:
-                month_rev[ts.strftime("%b")] += int(b.get("price", 0))
-        months_ordered = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        labels = [m for m in months_ordered if m in month_rev][-5:]
-        data = [month_rev[m] for m in labels]
+        tips.append(f"Cần ít nhất {MIN_SESSIONS_FOR_SCORE} lượt gửi hoàn tất để tính điểm chất lượng.")
+    if level < 3:
+        tips.append("Nâng cấp tích hợp lên cấp 3 để lượt đặt được tự xác nhận và hiển thị \"Thời gian thực\".")
+    missing = [c for c in GRADE_CHECKLIST if not (assessment.get("items") or {}).get(c["key"])]
+    missing.sort(key=lambda c: -c["points"])
+    if missing:
+        tips.append("Tiêu chí kiểm định chưa đạt nhiều điểm nhất: " + ", ".join(c["label"] for c in missing[:3]) + ".")
 
-    return labels or ["No data"], data or [0]
+    return {
+        "quality_score": float(garage.get("quality_score") or 0),
+        "has_enough_data": enough,
+        "stats": stats,
+        "integration": {"level": level, **INTEGRATION_LEVELS.get(level, {})},
+        "grade": {
+            "stars": int(garage.get("grade") or grade_info["grade"]),
+            "score": int(garage.get("grade_score") or grade_info["score"]),
+            "groups": [{"key": k, "label": GRADE_GROUPS[k], **v} for k, v in grade_info["groups"].items()],
+            "items": [{**c, "passed": bool((assessment.get("items") or {}).get(c["key"]))} for c in GRADE_CHECKLIST],
+            "assessed_at": assessment.get("assessed_at").isoformat() if isinstance(assessment.get("assessed_at"), datetime) else None,
+            "note": assessment.get("note", ""),
+        },
+        "badges": compute_badges(garage),
+        "next_inspection_at": garage["next_inspection_at"].isoformat() if isinstance(garage.get("next_inspection_at"), datetime) else None,
+        "tips": tips,
+    }
 
 
 # ── Services Overview ────────────────────────────────────────────
+
+def _portal_service_item(doc: dict, stype: Optional[dict], tags: Optional[list] = None, bookings: int = 0) -> dict:
+    code = doc.get("service_type_code", "")
+    st = stype or {}
+    return {
+        "id": str(doc.get("_id") or doc.get("id") or ""),
+        "service_type_code": code,
+        "name": st.get("name", code),
+        "description": st.get("description", ""),
+        "category": st.get("category", "parking"),
+        "unit": st.get("unit", "hour"),
+        "icon": st.get("icon", "clock"),
+        "price_vnd": int(doc.get("price", 0)),
+        "pricing": resolve_pricing(doc),
+        "note": doc.get("note", ""),
+        "bookings_30d": bookings,
+        "tags": tags or [],
+    }
+
 
 async def get_services_overview(garage: dict) -> dict:
     garage_oid = garage["_id"]
@@ -551,74 +360,36 @@ async def get_services_overview(garage: dict) -> dict:
     services_docs = await GarageServiceModel.collection.find({
         "garage_id": garage_oid, "is_available": True,
     }).to_list(length=100)
+    stype_map = await get_service_type_map()
 
-    active_count = len(services_docs)
-    avg_duration = int(
-        sum(d.get("estimated_duration_minutes", 30) for d in services_docs) / max(active_count, 1)
-    )
-
-    # Revenue efficiency: completed bookings this month / (services * 30 days) * 100
-    now = get_current_time()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    month_completed = await BookingModel.collection.count_documents({
-        "garage_id": garage_oid,
-        "status": "completed",
-        "timestamps.service_completed_at": {"$gte": month_start},
-    })
-    rev_efficiency = min(100, int((month_completed / max(active_count * 30, 1)) * 100))
-
-    # Enrich services with service type info
-    codes = [d.get("service_type_code", "") for d in services_docs]
-    stype_map = {}
-    if codes:
-        for st in await ServiceTypeModel.collection.find({"code": {"$in": codes}}).to_list(length=50):
-            stype_map[st["code"]] = st
-
-    # Count bookings per service for popularity tags
+    # Số lượt đặt 30 ngày theo dịch vụ
+    since = get_current_time() - timedelta(days=30)
     svc_counts = Counter()
-    if codes:
-        for b in await BookingModel.collection.find({
-            "garage_id": garage_oid,
-            "service_type_code": {"$in": codes},
-        }, {"service_type_code": 1}).to_list(length=5000):
-            svc_counts[b.get("service_type_code", "")] += 1
-
+    for b in await BookingModel.collection.find(
+        {"garage_id": garage_oid, "created_at": {"$gte": since}},
+        {"service_type_code": 1},
+    ).to_list(length=20000):
+        svc_counts[b.get("service_type_code", "")] += 1
     most_popular_code = svc_counts.most_common(1)[0][0] if svc_counts else ""
 
     services = []
-    for d in services_docs:
+    for d in sorted(services_docs, key=lambda x: stype_map.get(x.get("service_type_code"), {}).get("sort_order", 999)):
         code = d.get("service_type_code", "")
-        stype = stype_map.get(code)
-        tags = []
-        if code == most_popular_code:
-            tags.append("Popular")
-        if (stype or {}).get("category") == "coating":
-            tags.append("Premium")
+        tags = ["Đặt nhiều nhất"] if code == most_popular_code else []
+        services.append(_portal_service_item(d, stype_map.get(code), tags, svc_counts.get(code, 0)))
 
-        services.append({
-            "id": str(d.get("_id") or ""),
-            "name": (stype.get("name", code) if stype else code),
-            "description": (stype.get("description", "") if stype else ""),
-            "price_usd": int(d.get("price", 0)),
-            "duration_minutes": int(d.get("estimated_duration_minutes", 30)),
-            "icon_type": _ICON_MAP.get(code, "droplets"),
-            "tags": tags,
-        })
+    offered = {d.get("service_type_code") for d in services_docs}
+    available_types = [st for code, st in stype_map.items() if st.get("is_active") and code not in offered]
+    available_types.sort(key=lambda s: s.get("sort_order", 999))
 
     return {
         "stats": {
-            "active_services": active_count,
-            "avg_completion_time_mins": avg_duration,
-            "revenue_efficiency_percent": rev_efficiency,
-        },
-        "upsell_recommendation": {
-            "title": "Seasonal Care Packages",
-            "description": (
-                "Bundle your services to increase your average booking value by 22%. "
-                "Consider pairing wash + interior services as a package deal."
-            ),
+            "active_services": len(services),
+            "bookings_30d": sum(svc_counts.values()),
+            "top_service": stype_map.get(most_popular_code, {}).get("name", "") if most_popular_code else "",
         },
         "services": services,
+        "available_types": available_types,
     }
 
 
@@ -627,13 +398,15 @@ async def get_services_overview(garage: dict) -> dict:
 async def create_portal_service(
     garage: dict,
     service_type_code: str,
-    price: int,
+    price: Optional[int],
     duration_minutes: Optional[int],
     current_user: dict,
+    pricing: Optional[dict] = None,
+    note: Optional[str] = None,
 ) -> dict:
-    stype = stype_map_entry = await ServiceTypeModel.collection.find_one({"code": service_type_code})
+    stype = await get_service_type_by_code(service_type_code)
     if not stype:
-        raise HTTPException(status_code=404, detail=f"Service type '{service_type_code}' not found in catalog")
+        raise HTTPException(status_code=404, detail=f"Không có dịch vụ '{service_type_code}' trong danh mục")
 
     result = await upsert_garage_service(
         garage_id=str(garage["_id"]),
@@ -641,18 +414,10 @@ async def create_portal_service(
         price=price,
         estimated_duration_minutes=duration_minutes,
         current_user=current_user,
+        pricing=pricing,
+        note=note,
     )
-
-    code = result.get("service_type_code", "")
-    return {
-        "id": result["id"],
-        "name": stype.get("name", code),
-        "description": stype.get("description", ""),
-        "price_usd": result["price"],
-        "duration_minutes": result["estimated_duration_minutes"],
-        "icon_type": _ICON_MAP.get(code, "droplets"),
-        "tags": [],
-    }
+    return _portal_service_item(result, stype)
 
 
 async def update_portal_service(
@@ -660,6 +425,8 @@ async def update_portal_service(
     price: Optional[int],
     duration_minutes: Optional[int],
     current_user: dict,
+    pricing: Optional[dict] = None,
+    note: Optional[str] = None,
 ) -> dict:
     oid = convert_mongo_object_id(service_id)
     if not oid:
@@ -671,27 +438,17 @@ async def update_portal_service(
             doc.get("tenant_id") != current_user.get("tenant_id")):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    now = get_current_time()
-    set_fields: dict = {"updated_at": now, "updated_by": current_user.get("username", "")}
-    if price is not None:
-        set_fields["price"] = int(price)
-    if duration_minutes is not None:
-        set_fields["estimated_duration_minutes"] = int(duration_minutes)
-
-    await GarageServiceModel.collection.update_one({"_id": oid}, {"$set": set_fields})
-    updated = await GarageServiceModel.collection.find_one({"_id": oid})
-
-    code = updated.get("service_type_code", "")
-    stype = await ServiceTypeModel.collection.find_one({"code": code})
-    return {
-        "id": str(updated["_id"]),
-        "name": (stype.get("name", code) if stype else code),
-        "description": (stype.get("description", "") if stype else ""),
-        "price_usd": int(updated.get("price", 0)),
-        "duration_minutes": int(updated.get("estimated_duration_minutes", 30)),
-        "icon_type": _ICON_MAP.get(code, "droplets"),
-        "tags": [],
-    }
+    result = await upsert_garage_service(
+        garage_id=str(doc["garage_id"]),
+        service_type_code=doc["service_type_code"],
+        price=price,
+        estimated_duration_minutes=duration_minutes,
+        current_user=current_user,
+        pricing=pricing,
+        note=note,
+    )
+    stype = await get_service_type_by_code(doc["service_type_code"])
+    return _portal_service_item(result, stype)
 
 
 async def delete_portal_service(service_id: str, current_user: dict) -> bool:
@@ -725,85 +482,3 @@ async def delete_portal_service(service_id: str, current_user: dict) -> bool:
             {"_id": garage_oid}, {"$pull": {"services_offered": code}}
         )
     return True
-
-
-# ── Match Score ──────────────────────────────────────────────────
-
-def get_score_data(garage: dict) -> dict:
-    ta = garage.get("tier_assessment") or {}
-    equipment = int(ta.get("equipment_score", 70))
-    process = int(ta.get("process_score", 60))
-    staff = int(ta.get("staff_score", 50))
-    capacity = int(ta.get("capacity_score", 80))
-    reliability = int(ta.get("reliability_score", 75))
-
-    aggregate = int((equipment + process + staff + capacity + reliability) / 5)
-
-    if aggregate >= 86:
-        status_text = "ELITE"
-    elif aggregate >= 71:
-        status_text = "PERFORMING"
-    elif aggregate >= 51:
-        status_text = "OPTIMIZING"
-    else:
-        status_text = "NEEDS ATTENTION"
-
-    tier = int(garage.get("tier", 1))
-    current_tier = _TIER_NAMES.get(tier, "Basic")
-    next_tier_num = min(tier + 1, 4)
-    next_tier = _TIER_NAMES.get(next_tier_num, "Elite")
-
-    stats = garage.get("stats") or {}
-    current_rating = float(stats.get("avg_rating") or 4.0)
-    target_req = _TIER_REQUIREMENTS.get(next_tier_num, {"avg_rating": 4.7, "training_certs": 8})
-    current_certs = tier * 2 - 1
-
-    # AI recommendation based on lowest score
-    scores = {"equipment": equipment, "process": process, "staff": staff,
-              "capacity": capacity, "reliability": reliability}
-    lowest_key = min(scores, key=lambda k: scores[k])
-    lowest_val = scores[lowest_key]
-    rec_map = {
-        "staff": ("Priority Upgrade: Staff Training",
-                  f"Addressing the Staff score ({lowest_val}) could boost your aggregate efficiency by 8 points this month!"),
-        "process": ("Optimize Workflow Processes",
-                    f"Improving process efficiency ({lowest_val}) will reduce wait times and increase throughput."),
-        "equipment": ("Equipment Maintenance Check",
-                      f"Upgrading equipment condition ({lowest_val}) improves service quality and customer satisfaction."),
-        "capacity": ("Expand Booking Capacity",
-                     f"Improving capacity utilization ({lowest_val}) helps maximize revenue during peak hours."),
-        "reliability": ("Boost Reliability Score",
-                        f"Improving quality control ({lowest_val}) will increase customer return rate."),
-    }
-    rec_title, rec_desc = rec_map[lowest_key]
-
-    total_bays = int((garage.get("capacity") or {}).get("total_bays", 2))
-    current_load = garage.get("current_load") or {}
-    active_bays = int(current_load.get("vehicles_in_service", 0))
-
-    return {
-        "aggregate_score": aggregate,
-        "status_text": status_text,
-        "technical_overview": {
-            "comparison_text": f"{aggregate}% aggregate score",
-            "active_bays": active_bays,
-            "total_bays": total_bays,
-            "throughput_vph": round(active_bays / max(total_bays, 1) * 2, 1),
-        },
-        "score_components": {
-            "equipment": {"score": equipment, "description": "Condition of bays and high-pressure tech."},
-            "process": {"score": process, "description": "Workflow linearity and wait-time reduction."},
-            "staff": {"score": staff, "description": "Training levels and service speed metrics."},
-            "capacity": {"score": capacity, "description": "Booking fill rate and downtime minimization."},
-            "reliability": {"score": reliability, "description": "Quality control and customer return rate."},
-        },
-        "progression": {
-            "current_tier": current_tier,
-            "next_tier": next_tier,
-            "requirements_for_next": {
-                "training_certs": {"current": current_certs, "target": target_req["training_certs"]},
-                "avg_rating": {"current": round(current_rating, 1), "target": target_req["avg_rating"]},
-            },
-        },
-        "ai_recommendation": {"title": rec_title, "description": rec_desc},
-    }
