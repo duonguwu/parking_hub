@@ -1,0 +1,93 @@
+{
+    "fetchedAt": "2026-10-06T16:21:58.201Z",
+    "source": {
+        "name": "Trung tâm Dự báo KTTV quốc gia (nchmf.gov.vn)",
+        "url": "https://www.nchmf.gov.vn/"
+    },
+    "current": {
+        "observedAt": "2026-10-06T15:00:00.000Z",
+        "temperature": 27,
+        "text": "Đêm nhiều mây",
+        "humidity": 92,
+        "wind": "Lặng gió",
+        "station": "Sài Gòn (Tp Hồ Chí Minh)",
+        "source": {
+            "name": "Trung tâm Dự báo KTTV quốc gia (nchmf.gov.vn)",
+            "url": "https://www.nchmf.gov.vn/"
+        },
+        "stale": false
+    },
+    "model": {
+        "observedAt": "2026-10-06T16:15:00.000Z",
+        "temperature": 26,
+        "text": "Ít mây",
+        "humidity": 96,
+        "wind": "2 km/h",
+        "precipitation15m": 0,
+        "station": "Open-Meteo (mô hình)",
+        "source": {
+            "name": "Open-Meteo",
+            "url": "https://open-meteo.com/"
+        }
+    },
+    "dayNight": null,
+    "outlook": [
+        {
+            "day": "Thứ năm",
+            "date": "08/10/2026",
+            "high": 31,
+            "low": 25,
+            "wind": "2 m/s",
+            "text": "Nhiều mây, có mưa vừa"
+        },
+        {
+            "day": "Thứ sáu",
+            "date": "09/10/2026",
+            "high": 31,
+            "low": 25,
+            "wind": "1 m/s",
+            "text": "Nhiều mây, có mưa vừa"
+        },
+        {
+            "day": "Thứ bảy",
+            "date": "10/10/2026",
+            "high": 31,
+            "low": 25,
+            "wind": null,
+            "text": "Nhiều mây, có mưa vừa"
+        }
+    ],
+    "warnings": [
+        {
+            "title": "TIN DỰ BÁO MƯA LỚN Ở KHU VỰC TỪ PHÍA NAM TỈNH QUẢNG TRỊ ĐẾN TP. ĐÀ NẴNG VÀ PHÍA ĐÔNG TỈNH QUẢNG NGÃI",
+            "issuedAt": "2026-10-06T14:00:00.000Z",
+            "url": "https://www.nchmf.gov.vn/kttv/vi-VN/1/tin-du-bao-mua-lon-o-khu-vuc-tu-phia-nam-tinh-quang-tri-den-tp-da-nang-va-phia-dong-tinh-quang-ngai-post54290.html",
+            "hanoi": false
+        },
+        {
+            "title": "TIN CẢNH BÁO LŨ QUÉT SẠT LỞ ĐẤT, SỤT LÚN ĐẤT DO MƯA LŨ HOẶC DÒNG CHẢY TRÊN KHU VỰC CÁC TỈNH KHÁNH HÒA VÀ LÂM ĐỒNG",
+            "issuedAt": "2026-10-06T13:30:00.000Z",
+            "url": "https://www.nchmf.gov.vn/kttv/vi-VN/1/tin-canh-bao-lu-quet-sat-lo-dat-sut-lun-dat-do-mua-lu-hoac-dong-chay-tren-khu-vuc-cac-tinh-khanh-hoa-va-lam-dong-post54441.html",
+            "hanoi": false
+        },
+        {
+            "title": "TIN CẢNH BÁO LŨ QUÉT SẠT LỞ ĐẤT, SỤT LÚN ĐẤT DO MƯA LŨ HOẶC DÒNG CHẢY TRÊN KHU VỰC CÁC TỈNH/THÀNH PHỐ HÀ TĨNH, QUẢNG TRỊ VÀ HUẾ",
+            "issuedAt": "2026-10-06T12:30:00.000Z",
+            "url": "https://www.nchmf.gov.vn/kttv/vi-VN/1/tin-canh-bao-lu-quet-sat-lo-dat-sut-lun-dat-do-mua-lu-hoac-dong-chay-tren-khu-vuc-cac-tinh-thanh-pho-ha-tinh-quang-tri-va-hue-post54440.html",
+            "hanoi": false
+        },
+        {
+            "title": "TIN DỰ BÁO GIÓ MẠNH, SÓNG LỚN VÀ MƯA DÔNG TRÊN BIỂN",
+            "issuedAt": "2026-10-06T09:00:00.000Z",
+            "url": "https://www.nchmf.gov.vn/kttv/vi-VN/1/tin-du-bao-gio-manh-song-lon-va-mua-dong-tren-bien-post54353.html",
+            "hanoi": false
+        },
+        {
+            "title": "Bản tin cảnh báo lũ phục vụ quy trình LHC sông Đồng Nai",
+            "issuedAt": "2026-10-06T08:30:00.000Z",
+            "url": "https://www.nchmf.gov.vn/kttv/vi-VN/1/ban-tin-canh-bao-lu-phuc-vu-quy-trinh-lhc-song-dong-nai-post54425.html",
+            "hanoi": false
+        }
+    ],
+    "errors": []
+}

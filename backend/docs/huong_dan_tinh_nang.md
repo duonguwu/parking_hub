@@ -26,7 +26,7 @@ Tài xế tự đăng ký tài khoản ngay ở trang đăng nhập.
 | Chủ bãi | `owner_q1_01`, `owner_q3_01`, `owner_bt_01`… (dạng `owner_<quận>_<số>`) | `Owner@2026` |
 | Quản trị viên | Do người vận hành hệ thống cấp | |
 
-Dữ liệu demo gồm khoảng 150 bãi đỗ ở 10 quận TP.HCM. Tên bãi, giá, lượt đặt và đánh giá đều là dữ liệu giả.
+Dữ liệu demo gồm khoảng 262 bãi đỗ ở 18 quận TP.HCM. Tên bãi, giá, lượt đặt và đánh giá đều là dữ liệu giả.
 
 ### Ba cách hệ thống phân loại một bãi
 
