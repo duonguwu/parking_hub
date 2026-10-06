@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { MapPin, Calendar, Search, CarFront, Settings, HelpCircle, Plus, Bell, ChevronDown, LogOut } from 'lucide-react'
+import { MapPin, Calendar, Home, CarFront, User as UserIcon, Plus, ChevronDown, LogOut } from 'lucide-react'
+import { ROLE_LABEL } from '@/services/api'
 import { cn } from '@/services/utils'
 import { Brand } from '@/components/Brand'
 import { APP_TAGLINE } from '@/config/app'
@@ -7,10 +8,11 @@ import { useAuth } from '@/services/auth-context'
 import { useState } from 'react'
 
 const navItems = [
-  { to: '/app', icon: Search, label: 'Tìm bãi' },
+  { to: '/app', icon: Home, label: 'Trang chủ' },
   { to: '/app/map', icon: MapPin, label: 'Bản đồ' },
-  { to: '/app/bookings', icon: Calendar, label: 'Lịch hẹn' },
-  { to: '/app/vehicles', icon: CarFront, label: 'Xe của tôi' },
+  { to: '/app/bookings', icon: Calendar, label: 'Lượt đặt' },
+  { to: '/app/vehicles', icon: CarFront, label: 'Xe' },
+  { to: '/app/profile', icon: UserIcon, label: 'Hồ sơ' },
 ]
 
 export function CustomerLayout() {
@@ -24,7 +26,7 @@ export function CustomerLayout() {
     navigate('/login')
   }
 
-  const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : 'U'
+  const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : (user?.username?.charAt(0).toUpperCase() ?? '?')
 
   return (
     <div className="flex min-h-screen bg-background relative selection:bg-blue-100">
@@ -64,19 +66,9 @@ export function CustomerLayout() {
           <Link to="/app/map" className="block">
             <button className="w-full bg-primary-container text-on-primary-container hover:opacity-90 py-3 px-4 rounded-full text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 border border-primary/20">
               <Plus className="w-4 h-4" />
-              ĐẶT CHỖ MỚI
+              Đặt chỗ mới
             </button>
           </Link>
-          <div className="space-y-1 pt-4 px-2 border-t border-outline-variant">
-            <Link to="#" className="flex items-center gap-3 text-on-surface-variant hover:text-on-surface transition-colors py-2 px-2 rounded-lg text-xs font-medium">
-              <Settings className="w-4 h-4 text-outline" />
-              <span>Cài đặt</span>
-            </Link>
-            <Link to="#" className="flex items-center gap-3 text-on-surface-variant hover:text-on-surface transition-colors py-2 px-2 rounded-lg text-xs font-medium">
-              <HelpCircle className="w-4 h-4 text-outline" />
-              <span>Hỗ trợ</span>
-            </Link>
-          </div>
         </div>
       </aside>
 
@@ -89,24 +81,9 @@ export function CustomerLayout() {
             <Brand className="text-lg" />
           </div>
 
-          {/* Search Bar (Desktop & Tablet) */}
-          <div className="hidden sm:flex flex-1 max-w-md relative mx-4">
-            <Search className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Tìm bãi đỗ xe, vị trí, biển số..."
-              className="w-full bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-primary transition-colors placeholder:text-outline"
-            />
-          </div>
-
           {/* Header Right Actions */}
           <div className="flex items-center gap-3 md:gap-4 ml-auto">
-            <button className="relative p-2 text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors" title="Thông báo">
-              <Bell className="w-5 h-5" />
-              <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
-            </button>
 
-            <div className="h-6 w-px bg-outline-variant" />
 
             <div className="relative">
               <button
@@ -118,7 +95,7 @@ export function CustomerLayout() {
                 </div>
                 <div className="text-left hidden sm:block">
                   <p className="text-xs font-bold text-on-surface leading-tight">{user?.name ?? 'Khách'}</p>
-                  <p className="text-[10px] font-medium text-on-surface-variant uppercase">{user?.role ?? ''}</p>
+                  <p className="text-[10px] font-medium text-on-surface-variant uppercase">{ROLE_LABEL[user?.role ?? ''] ?? user?.role ?? ''}</p>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-outline hidden sm:block" />
               </button>
@@ -127,7 +104,7 @@ export function CustomerLayout() {
                 <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-outline-variant rounded-2xl z-50 overflow-hidden shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="px-4 py-3 border-b border-outline-variant sm:hidden">
                     <p className="text-xs font-bold text-on-surface">{user?.name ?? 'Khách'}</p>
-                    <p className="text-[10px] text-on-surface-variant uppercase">{user?.role ?? ''}</p>
+                    <p className="text-[10px] text-on-surface-variant uppercase">{ROLE_LABEL[user?.role ?? ''] ?? user?.role ?? ''}</p>
                   </div>
                   <button
                     onClick={handleLogout}
@@ -157,7 +134,7 @@ export function CustomerLayout() {
               key={item.to}
               to={item.to}
               className={cn(
-                'flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all',
+                'flex flex-col items-center justify-center py-1 px-1.5 rounded-2xl transition-all',
                 isActive
                   ? 'text-primary font-bold'
                   : 'text-on-surface-variant hover:text-on-surface'
