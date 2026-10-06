@@ -6,7 +6,7 @@ from typing import Optional, List
 
 class LoginRequest(BaseModel):
     username: str = Field(..., description="Username hoặc email", min_length=1)
-    password: str = Field(..., description="Mật khẩu", min_length=6)
+    password: str = Field(..., description="Mật khẩu", min_length=1)
 
 
 class RegisterCustomerRequest(BaseModel):

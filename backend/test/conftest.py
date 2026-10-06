@@ -187,6 +187,9 @@ async def registered_garage(
         json={"status": "active", "integration_level": 3},
     )
     assert approve.status_code == 200, f"Approve garage failed: {approve.text}"
+    # Mở cửa 24h để các test tìm bãi không phụ thuộc giờ chạy test
+    hours = await client.put("/garage-portal/garage", cookies=cookies, json={"operating_hours": {"is_24h": True}})
+    assert hours.status_code == 200, f"Set 24h hours failed: {hours.text}"
     return {
         "response": resp.json(),
         "cookies": cookies,

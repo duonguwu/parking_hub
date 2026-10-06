@@ -23,6 +23,7 @@ from app.api.shared.common_utils import api_response
 from app.api.shared.schemas import Operation, Resource
 from app.api.garage_portal.garage_portal_utils import (
     get_garage_for_user,
+    list_accessible_garages,
     get_dashboard_overview,
     get_capacity_chart,
     get_portal_bookings,
@@ -40,6 +41,15 @@ garage_portal_router = APIRouter(prefix="/garage-portal", tags=["Garage Owner Po
 
 
 # ── 1. Hồ sơ bãi ─────────────────────────────────────────────────
+
+@garage_portal_router.get("/garages")
+async def my_garages(
+    q: Optional[str] = Query(None),
+    current_user: dict = Depends(require_permission(["garage:view"])),
+) -> Dict[str, Any]:
+    """Các bãi user được thao tác (chủ có thể có nhiều bãi; super_admin thấy toàn mạng lưới)."""
+    return api_response(Operation.RETRIEVED, Resource.GARAGE, data=await list_accessible_garages(current_user, q))
+
 
 @garage_portal_router.get("/garage")
 async def my_garage(

@@ -49,8 +49,16 @@ def _revenue(b: dict) -> int:
 
 # ── Garage Resolution ────────────────────────────────────────────
 
+GARAGE_STAFF_ROLES = ("garage_owner", "garage_manager", "garage_staff")
+
+
+def _is_admin(current_user: dict) -> bool:
+    return current_user.get("role") == "super_admin" or current_user.get("tenant_id") == "super_admin"
+
+
 async def get_garage_for_user(current_user: dict, garage_id_override: Optional[str] = None) -> dict:
-    """Bãi của user hiện tại. super_admin phải truyền garage_id."""
+    """Bãi đang thao tác. Nhân sự bãi chỉ chọn được bãi của tenant mình (chủ có thể có nhiều bãi);
+    super_admin chọn được bất kỳ bãi nào qua garage_id."""
     if garage_id_override:
         oid = convert_mongo_object_id(garage_id_override)
         if not oid:
@@ -58,23 +66,39 @@ async def get_garage_for_user(current_user: dict, garage_id_override: Optional[s
         garage = await GarageModel.collection.find_one({"_id": oid})
         if not garage:
             raise HTTPException(status_code=404, detail="Garage not found")
-        if (current_user.get("tenant_id") != "super_admin" and
-                garage.get("tenant_id") != current_user.get("tenant_id")):
+        if not _is_admin(current_user) and garage.get("tenant_id") != current_user.get("tenant_id"):
             raise HTTPException(status_code=403, detail="Access denied")
         return garage
 
     tenant_id = current_user.get("tenant_id")
     if not tenant_id or tenant_id == "super_admin":
         raise HTTPException(status_code=400, detail="Provide garage_id for super_admin access")
-    if current_user.get("role") not in ("garage_owner", "garage_manager", "garage_staff"):
+    if current_user.get("role") not in GARAGE_STAFF_ROLES:
         raise HTTPException(status_code=403, detail="Chỉ dành cho nhân sự bãi đỗ")
 
     garage = await GarageModel.collection.find_one(
-        {"tenant_id": tenant_id, "status": {"$ne": "deleted"}}, sort=[("status", 1)],
+        {"tenant_id": tenant_id, "status": {"$ne": "deleted"}}, sort=[("status", 1), ("name", 1)],
     )
     if not garage:
         raise HTTPException(status_code=404, detail="Tài khoản chưa có bãi đỗ")
     return garage
+
+
+async def list_accessible_garages(current_user: dict, q: Optional[str] = None, limit: int = 50) -> list:
+    """Danh sách bãi user được phép thao tác: bãi của tenant mình; super_admin xem được toàn mạng lưới."""
+    query: dict = {"status": {"$ne": "deleted"}}
+    if _is_admin(current_user):
+        if q:
+            import re
+            query["name"] = {"$regex": re.escape(q.strip()[:50]), "$options": "i"}
+    else:
+        if current_user.get("role") not in GARAGE_STAFF_ROLES:
+            raise HTTPException(status_code=403, detail="Chỉ dành cho nhân sự bãi đỗ")
+        query["tenant_id"] = current_user.get("tenant_id")
+    docs = await GarageModel.collection.find(query, {"name": 1, "address": 1, "status": 1, "lot_type": 1}) \
+        .sort("name", 1).limit(limit).to_list(length=limit)
+    return [{"id": str(d["_id"]), "name": d.get("name", ""), "district": (d.get("address") or {}).get("district", ""),
+             "status": d.get("status"), "lot_type": d.get("lot_type")} for d in docs]
 
 
 # ── Dashboard ────────────────────────────────────────────────────
