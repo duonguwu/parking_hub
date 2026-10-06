@@ -21,6 +21,9 @@ from app.api.customer.customer_views import customer_router
 # Garage Owner Portal — RESTful endpoints for Garage FE
 from app.api.garage_portal.garage_portal_views import garage_portal_router
 
+# Platform Admin
+from app.api.admin.admin_views import admin_router
+
 main_router = APIRouter()
 
 # ── Auth (partially public) ──
@@ -46,3 +49,6 @@ main_router.include_router(customer_router)
 
 # ── Garage Owner Portal (aggregated FE-facing endpoints) ──
 main_router.include_router(garage_portal_router)
+
+# ── Platform Admin ──
+main_router.include_router(admin_router)

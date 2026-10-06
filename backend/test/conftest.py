@@ -167,14 +167,30 @@ async def registered_customer(client: AsyncClient, customer_data: dict) -> dict:
 
 
 @pytest.fixture(scope="session")
-async def registered_garage(client: AsyncClient, garage_owner_data: dict) -> dict:
-    """Register a garage (creates tenant + user + garage) and return cookies."""
+async def registered_garage(
+    client: AsyncClient, garage_owner_data: dict, superadmin_cookies: dict,
+) -> dict:
+    """
+    Register a garage (creates tenant + user + garage), then admin approves it.
+    Bãi mới đăng ký ở trạng thái pending_review; admin duyệt và đặt cấp tích hợp 3
+    (giữ chỗ tự xác nhận) để các luồng đặt chỗ chạy được.
+    """
     resp = await client.post("/auth/register-garage", json=garage_owner_data)
     assert resp.status_code == 200, f"Garage register failed: {resp.text}"
     cookies = dict(resp.cookies)
+
+    mine = await client.get("/garage-portal/garage", cookies=cookies)
+    assert mine.status_code == 200, f"Load own garage failed: {mine.text}"
+    garage_id = mine.json()["data"]["id"]
+    approve = await client.patch(
+        f"/admin/garages/{garage_id}", cookies=superadmin_cookies,
+        json={"status": "active", "integration_level": 3},
+    )
+    assert approve.status_code == 200, f"Approve garage failed: {approve.text}"
     return {
         "response": resp.json(),
         "cookies": cookies,
+        "garage_id": garage_id,
     }
 
 
@@ -183,20 +199,12 @@ async def configured_garage(
     client: AsyncClient, registered_garage: dict, superadmin_cookies: dict,
 ) -> dict:
     """
-    Garage with wash_premium service configured.
+    Garage with park_overnight + park_hourly configured.
     Returns {garage_id, cookies (owner), service_type_code, price}.
     """
-    # Find garage_id
-    list_resp = await client.post(
-        "/garage/get_all", json={}, cookies=superadmin_cookies,
-    )
-    garages = list_resp.json()["data"]
-    assert len(garages) >= 1
-    # Pick the test garage (matches registered_garage's name)
-    test_g = next(g for g in garages if "Test Q3" in g.get("name", ""))
-    garage_id = test_g["id"]
+    garage_id = registered_garage["garage_id"]
 
-    # Configure wash_premium at 150000 VND
+    # Configure park_overnight at 150000 VND
     owner_cookies = registered_garage["cookies"]
     upsert_resp = await client.post(
         "/garage-services/upsert",
@@ -210,7 +218,7 @@ async def configured_garage(
     )
     assert upsert_resp.status_code == 200, f"Upsert failed: {upsert_resp.text}"
 
-    # Also add wash_basic so customers with standard vehicles have options
+    # Also add park_hourly so customers have a block-priced option
     await client.post(
         "/garage-services/upsert",
         cookies=owner_cookies,
