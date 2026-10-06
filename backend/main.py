@@ -108,7 +108,8 @@ async def ensure_indexes():
         # Garages
         await GarageModel.collection.create_index([("location", "2dsphere")])
         await GarageModel.collection.create_index("tenant_id")
-        await GarageModel.collection.create_index([("tier", 1), ("status", 1)])
+        await GarageModel.collection.create_index([("status", 1), ("integration_level", 1)])
+        await GarageModel.collection.create_index([("status", 1), ("lot_type", 1), ("grade", 1)])
         await GarageModel.collection.create_index([("status", 1), ("is_accepting_bookings", 1)])
         await GarageModel.collection.create_index("slug")
 
@@ -134,12 +135,16 @@ async def ensure_indexes():
         await BookingModel.collection.create_index([("customer_id", 1), ("status", 1)])
         await BookingModel.collection.create_index([("garage_id", 1), ("status", 1)])
         await BookingModel.collection.create_index(
-            [("tenant_id", 1), ("status", 1), ("requested_time", 1)]
+            [("garage_id", 1), ("status", 1), ("start_time", 1), ("end_time", 1)]
         )
+        await BookingModel.collection.create_index(
+            [("tenant_id", 1), ("status", 1), ("start_time", 1)]
+        )
+        await BookingModel.collection.create_index([("garage_id", 1), ("license_plate", 1), ("status", 1)])
         await BookingModel.collection.create_index([("created_at", -1)])
 
         await CapacitySnapshotModel.collection.create_index(
-            [("garage_id", 1), ("timestamp", -1)]
+            [("garage_id", 1), ("timestamp", -1)], unique=True, name="garage_hour_unique"
         )
         await CapacitySnapshotModel.collection.create_index(
             [("garage_id", 1), ("hour_of_day", 1), ("day_of_week", 1)]
@@ -199,9 +204,15 @@ PUBLIC_PATH_PREFIXES = (
     "/openapi.json",
     "/redoc",
     "/garage/search_nearby",       # Public search
+    "/garage/taxonomy",            # Public — danh mục phân loại bãi
     "/customer/nearby",            # Public — nearby garages for Map
     "/customer/garages/",          # Public — garage portal detail
     "/match/search",               # Public matching (optional auth)
+    "/match/feedback",             # Public — implicit feedback cho search log
+    "/service-types",              # Public — danh mục dịch vụ
+    "/garage-services/quote",      # Public — báo giá theo khoảng thời gian
+    "/garage-services/list_by_garage",  # Public — bảng giá của bãi
+    "/capacity/current_and_predicted",  # Public — chỗ trống hiện tại + dự đoán
 )
 
 
