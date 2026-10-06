@@ -36,25 +36,23 @@ class TestMatchSearch:
         }
         assert top["rank"] == 1
 
-    async def test_search_filters_by_tier(
+    async def test_search_filters_covered(
         self, client: AsyncClient, configured_garage,
     ):
-        """Vehicle requiring tier 4 (super) should not match a tier-1 garage."""
+        """Yêu cầu có mái che: bãi ngoài trời không được trả về."""
         resp = await client.post(
             "/match/search",
             json={
                 "current_location": {"lat": 10.7835, "lng": 106.6860},
                 "service_type_code": "park_overnight",
-                "vehicle_type": "super",  # requires tier 4
+                "must_have_amenities": ["covered"],
+                "excluded_garage_ids": [configured_garage["garage_id"]],
                 "max_travel_minutes": 30,
             },
         )
         assert resp.status_code == 200
         data = resp.json()["data"]
-        # The test garage defaults to tier 1 → not in results
-        assert data["results_count"] == 0 or all(
-            m["tier"] >= 4 for m in data["matches"]
-        )
+        assert all(m["garage_id"] != configured_garage["garage_id"] for m in data["matches"])
 
     async def test_search_returns_search_id_for_feedback(
         self, client: AsyncClient, configured_garage,

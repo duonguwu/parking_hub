@@ -54,6 +54,7 @@ def _match_to_dict(m) -> dict:
         "travel_distance_km": m.travel_distance_km,
         "predicted_arrival": m.predicted_arrival.isoformat() if m.predicted_arrival else None,
         "predicted_wait_minutes": m.predicted_wait_minutes,
+        "expected_available": m.expected_available,
         "service_price": m.service_price,
         "location": m.location,
         "component_scores": m.component_scores,

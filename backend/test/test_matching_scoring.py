@@ -111,34 +111,34 @@ class TestReliabilityScore:
         assert score_reliability({}) == 0.5
 
     def test_perfect_stats(self):
-        s = {"on_time_rate": 1.0, "complaint_rate": 0.0, "completion_rate": 1.0}
+        s = {"total_sessions": 50, "fulfillment_rate": 1.0, "complaint_count": 0}
         assert score_reliability(s) == pytest.approx(1.0, abs=0.01)
 
     def test_bad_stats(self):
-        s = {"on_time_rate": 0.2, "complaint_rate": 0.5, "completion_rate": 0.3}
+        s = {"total_sessions": 20, "fulfillment_rate": 0.3, "complaint_count": 10}
         result = score_reliability(s)
         assert result < 0.5
 
 
 class TestEnvironmentScore:
     def test_no_weather_neutral(self):
-        assert score_environment(None, []) == 1.0
+        assert score_environment(None) == 1.0
 
     def test_raining_covered(self):
         w = WeatherSnapshot(precipitation_mm=2.0)
-        assert score_environment(w, ["covered_bay"]) == 1.0
+        assert score_environment(w, "basement") == 1.0
 
     def test_raining_no_cover(self):
         w = WeatherSnapshot(precipitation_mm=2.0)
-        assert score_environment(w, ["wifi"]) == 0.3
+        assert score_environment(w, "open") == 0.3
 
     def test_drizzle_no_cover(self):
         w = WeatherSnapshot(precipitation_mm=0.2)
-        assert score_environment(w, []) == 0.7
+        assert score_environment(w) == 0.7
 
     def test_clear_weather(self):
         w = WeatherSnapshot(precipitation_mm=0)
-        assert score_environment(w, []) == 1.0
+        assert score_environment(w) == 1.0
 
 
 class TestContextWeights:

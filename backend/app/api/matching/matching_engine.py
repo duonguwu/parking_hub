@@ -19,7 +19,9 @@ from bson import ObjectId
 from app.api.garage.garage_models import GarageModel
 from app.api.garage_service.garage_service_models import GarageServiceModel
 from app.api.vehicle.vehicle_models import VehicleModel
-from app.api.capacity.capacity_utils import predict_capacity, CapacityState
+from app.api.capacity.capacity_utils import predict_availability, total_spots
+from app.api.garage_service.garage_service_utils import resolve_pricing
+from app.api.garage_service.pricing_utils import quote_price, to_local
 from app.api.matching.scoring import (
     score_distance, score_wait, score_quality, score_fit, score_affinity,
     score_price, score_reliability, score_environment,
@@ -46,8 +48,11 @@ def _is_peak_hour(dt: datetime) -> bool:
 
 
 def _is_garage_open_at(garage: dict, at_time: datetime) -> bool:
-    """Check if garage's operating_hours covers at_time."""
-    hours = (garage.get("capacity") or {}).get("operating_hours") or {}
+    """Check if garage's operating_hours covers at_time (giờ địa phương)."""
+    hours = garage.get("operating_hours") or {}
+    if hours.get("is_24h"):
+        return True
+    at_time = to_local(at_time)
     day_keys = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     day_key = day_keys[at_time.weekday()]
     slot = hours.get(day_key)
@@ -76,7 +81,7 @@ class EnrichedCandidate:
     travel_distance_km: float
     route_confidence: float
     arrival_time: datetime
-    predicted_state: CapacityState
+    predicted: dict
     weather_at_arrival: Optional[WeatherSnapshot]
     service_price: Optional[int]
 
@@ -92,6 +97,7 @@ class MatchResult:
     travel_distance_km: float = 0.0
     predicted_arrival: Optional[datetime] = None
     predicted_wait_minutes: int = 0
+    expected_available: int = 0
     service_price: int = 0
     component_scores: Dict[str, float] = field(default_factory=dict)
     reasons: List[Dict[str, Any]] = field(default_factory=list)
@@ -118,13 +124,15 @@ async def stage1_filter(
                 "$maxDistance": max_dist_m,
             }
         },
-        "tier": {"$gte": vehicle_min_tier},
         "status": "active",
+        "integration_level": {"$gte": 2},
         "is_accepting_bookings": True,
         "services_offered": service_type_code,
     }
-    if must_have_amenities:
-        query["amenities"] = {"$all": must_have_amenities}
+    if "covered" in (must_have_amenities or []):
+        query["attributes.cover"] = {"$in": ["basement", "full_roof"]}
+    if "ev_charger" in (must_have_amenities or []):
+        query["attributes.ev_chargers.count"] = {"$gt": 0}
     if excluded_garage_ids:
         oids = [convert_mongo_object_id(g) for g in excluded_garage_ids]
         query["_id"] = {"$nin": [o for o in oids if o]}
@@ -169,15 +177,16 @@ async def stage2_enrich(
             dist_m = 0
 
         arrival = now + timedelta(minutes=travel_min)
-        predicted = await predict_capacity(str(g["_id"]), arrival)
+        predicted = await predict_availability(g, arrival)
 
-        # Price lookup (per-garage service override)
+        # Báo giá 2 giờ gửi tại bãi (dùng để so sánh giá trong khu vực)
         price_doc = await GarageServiceModel.collection.find_one({
             "garage_id": g["_id"],
             "service_type_code": service_type_code,
             "is_available": True,
         })
-        price = int(price_doc["price"]) if price_doc else None
+        price = (quote_price(resolve_pricing(price_doc), arrival, arrival + timedelta(hours=2))["amount"]
+                 if price_doc else None)
 
         enriched.append(EnrichedCandidate(
             garage=g,
@@ -185,7 +194,7 @@ async def stage2_enrich(
             travel_distance_km=dist_m / 1000.0,
             route_confidence=matrix.confidence,
             arrival_time=arrival,
-            predicted_state=predicted,
+            predicted=predicted,
             weather_at_arrival=weather,
             service_price=price,
         ))
@@ -230,13 +239,17 @@ async def stage3_score(
     results: List[MatchResult] = []
     for c in enriched:
         g = c.garage
-        tier = int(g.get("tier", 1))
-        tier_score = float(g.get("tier_score", 0))
+        tier = int(g.get("grade", 1))
+        tier_score = float(g.get("quality_score") or 0) or tier * 18.0
         stats = g.get("stats") or {}
-        amenities = g.get("amenities") or []
+        cover = (g.get("attributes") or {}).get("cover", "open")
+        total = total_spots(g)
+        expected_avail = int(c.predicted.get("expected_available") or 0)
+        # "Thời gian chờ" quy đổi từ độ khan hiếm chỗ: càng ít chỗ dự kiến càng dễ phải vòng tìm
+        scarcity_wait = 0.0 if expected_avail >= 5 else (5 - expected_avail) * 4.0
 
-        # days since last tier_assessment
-        assess = (g.get("tier_assessment") or {}).get("last_assessed_at")
+        # days since last grade assessment
+        assess = (g.get("grade_assessment") or {}).get("assessed_at")
         if assess:
             try:
                 days = (now - assess).days
@@ -247,20 +260,20 @@ async def stage3_score(
 
         s = {
             "distance": score_distance(c.travel_min, user_dist_tol_min),
-            "wait": score_wait(float(c.predicted_state.wait_minutes), wait_tol_min),
+            "wait": score_wait(scarcity_wait, wait_tol_min),
             "quality": score_quality(tier_score, days),
-            "fit": score_fit(vehicle_min_tier, tier),
+            "fit": 1.0 if expected_avail > 0 else 0.3,
             "affinity": score_affinity(user_affinity, str(g["_id"])),
             "price": score_price(c.service_price or 0, price_sensitivity, area_prices),
             "reliability": score_reliability(stats),
-            "environment": score_environment(c.weather_at_arrival, amenities),
+            "environment": score_environment(c.weather_at_arrival, cover),
         }
 
         total = sum(weights.get(k, 0) * v for k, v in s.items())
         total_scaled = total * 100.0
 
         reasons_dict = build_reasons_tradeoffs(
-            s, int(round(c.travel_min)), int(c.predicted_state.wait_minutes), tier,
+            s, int(round(c.travel_min)), expected_avail, tier,
             weather.is_raining if weather else False,
         )
 
@@ -272,7 +285,8 @@ async def stage3_score(
             travel_minutes=int(round(c.travel_min)),
             travel_distance_km=round(c.travel_distance_km, 2),
             predicted_arrival=c.arrival_time,
-            predicted_wait_minutes=int(c.predicted_state.wait_minutes),
+            predicted_wait_minutes=int(scarcity_wait),
+            expected_available=expected_avail,
             service_price=int(c.service_price or 0),
             component_scores={k: round(v, 3) for k, v in s.items()},
             reasons=reasons_dict["reasons"],

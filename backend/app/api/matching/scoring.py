@@ -69,22 +69,20 @@ def score_price(service_price: int, price_sensitivity: str, area_prices: List[in
 
 
 def score_reliability(stats: dict) -> float:
-    if not stats:
+    """Độ tin cậy giữ chỗ: tỉ lệ giữ đúng chỗ + ít khiếu nại."""
+    if not stats or not stats.get("total_sessions"):
         return 0.5    # neutral
-    on_time = float(stats.get("on_time_rate", 0.5))
-    complaint = float(stats.get("complaint_rate", 0.05))
-    # completion: fallback if missing → compute from retention_rate
-    completion = float(stats.get("completion_rate", 0.9))
-    return max(0.0, min(1.0,
-        0.5 * on_time + 0.3 * (1.0 - complaint) + 0.2 * completion
-    ))
+    fulfillment = float(stats.get("fulfillment_rate", 0.9))
+    sessions = max(int(stats.get("total_sessions") or 1), 1)
+    complaint = min(1.0, int(stats.get("complaint_count") or 0) / sessions)
+    return max(0.0, min(1.0, 0.7 * fulfillment + 0.3 * (1.0 - complaint)))
 
 
-def score_environment(weather: Optional[WeatherSnapshot], amenities: List[str]) -> float:
-    """Rain → strongly prefer covered bays."""
+def score_environment(weather: Optional[WeatherSnapshot], cover: str = "open") -> float:
+    """Rain → strongly prefer covered lots (hầm / mái toàn phần)."""
     if weather is None:
         return 1.0
-    has_cover = "covered_bay" in (amenities or []) or "covered" in (amenities or [])
+    has_cover = cover in ("basement", "full_roof")
     if weather.is_raining:
         return 1.0 if has_cover else 0.3
     if weather.is_drizzling:
@@ -150,11 +148,11 @@ def compute_context_weights(
 
 REASON_TEMPLATES = {
     "best_distance": "Chỉ {travel_min} phút — gần nhất trong các lựa chọn phù hợp",
-    "low_wait": "Chờ không đáng kể khi đến (~{wait_min} phút)",
-    "no_wait": "Hiện trống, không phải chờ",
-    "high_quality": "Tier {tier} — chất lượng cao",
+    "low_wait": "Dự kiến còn ~{wait_min} chỗ khi bạn đến",
+    "no_wait": "Dự kiến còn nhiều chỗ trống",
+    "high_quality": "Bãi {tier}★ — cơ sở vật chất tốt",
     "good_fit": "Phù hợp loại xe của bạn",
-    "favorite": "Gara bạn hay quay lại",
+    "favorite": "Bãi bạn hay quay lại",
     "covered_rain": "Có mái che — phù hợp trời đang mưa",
     "reliable": "Đúng giờ, ít khiếu nại",
     "good_price": "Giá tốt so với khu vực",
@@ -162,8 +160,8 @@ REASON_TEMPLATES = {
 
 TRADEOFF_TEMPLATES = {
     "far_distance": "Hơi xa — {travel_min} phút đi",
-    "will_wait": "Có thể phải chờ ~{wait_min} phút",
-    "overqualified": "Gara cao cấp hơn nhu cầu — giá có thể cao",
+    "will_wait": "Có thể gần hết chỗ (dự kiến còn {wait_min} chỗ)",
+    "overqualified": "Có thể hết chỗ khi bạn đến",
     "price_higher": "Giá cao hơn trung bình khu vực",
     "no_cover": "Không có mái che (trời đang mưa)",
     "low_reliability": "Chỉ số đúng giờ chưa cao",
