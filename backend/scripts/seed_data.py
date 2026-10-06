@@ -1,36 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Seed Data Script
-================
-Tạo dữ liệu mẫu cho toàn bộ hệ thống, phục vụ phát triển và demo.
+Seed dữ liệu demo cho Phase Quản lý.
 
-Toàn bộ dữ liệu trong file này là dữ liệu giả, chỉ toạ độ là toạ độ thực tại TP.HCM.
+Toàn bộ là dữ liệu giả. Toạ độ quanh các tâm quận thật của TP.HCM, có nhiễu ngẫu nhiên.
+Chạy lại với cùng --seed cho ra cùng bộ dữ liệu.
 
-Collections được seed:
-  - tenants         (30 chủ bãi)
-  - users           (30 chủ bãi + 6 khách hàng)
-  - garages         (30 bãi đỗ xe tại Q1, Q3, Q5, Q7, toạ độ thực TP.HCM)
-  - garage_services (mỗi bãi 2 tới 4 dịch vụ kèm giá)
-  - vehicles        (2-3 xe/customer)
-  - bookings        (~120 bookings phân bổ 90 ngày qua)
-  - capacity_snapshots (4 tuần dữ liệu giờ để fuel charts)
+Sinh ra:
+  - ~150 bãi đỗ (8 loại hình, cấp tích hợp 1–4, hạng sao từ checklist kiểm định)
+    kèm tenant + tài khoản chủ bãi `owner_<quận>_<nn>`
+  - bảng giá theo bãi (giá theo quận và loại hình)
+  - 40 tài xế `customer_01..40`, mỗi người 1–2 xe
+  - ~3.000 lượt đặt trong 90 ngày qua + lượt sắp tới + xe đang trong bãi + xe vãng lai
+  - snapshot lấp đầy theo giờ 8 tuần cho bãi cấp ≥ 2
+  - chỉ số vận hành và điểm chất lượng tính lại từ lượt đặt
 
 Usage:
   cd backend
-  uv run python scripts/seed_data.py            # additive (skip existing)
-  uv run python scripts/seed_data.py --reset    # xoá data cũ trước
+  uv run python scripts/seed_data.py --reset          # xoá dữ liệu demo cũ rồi seed
+  uv run python scripts/seed_data.py --reset --lots 60 --bookings 1000
+Trong Docker:
+  docker exec -it parkinghub-backend-app uv run python scripts/seed_data.py --reset
 """
-import asyncio
 import argparse
-import sys
+import asyncio
+import math
 import os
 import random
+import re
+import sys
+import unicodedata
 from datetime import datetime, timedelta, timezone
-from bson import ObjectId
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("PYTHONPATH", ".")
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -41,1243 +43,573 @@ setup_logging(service="seed", console_level=20)
 import logging
 logger = logging.getLogger(__name__)
 
-# ── Time helpers ────────────────────────────────────────────────
+OWNER_PASSWORD = "Owner@2026"
+CUSTOMER_PASSWORD = "Customer@2026"
+SEED_TAG = "seed_demo"          # created_by của mọi bản ghi do script tạo, để --reset xoá đúng phần này
+
+# ── Khu vực ──────────────────────────────────────────────────────
+# (mã, tên quận, tâm lat, lng, bán kính km, số bãi, hệ số giá, đường)
+DISTRICTS = [
+    ("q1", "Quận 1", 10.7756, 106.7004, 1.3, 26, 1.5,
+     ["Nguyễn Huệ", "Lê Lợi", "Đồng Khởi", "Hai Bà Trưng", "Lý Tự Trọng", "Nam Kỳ Khởi Nghĩa", "Pasteur",
+      "Tôn Đức Thắng", "Nguyễn Thị Minh Khai", "Lê Thánh Tôn", "Phạm Ngũ Lão", "Calmette"]),
+    ("q3", "Quận 3", 10.7843, 106.6844, 1.2, 18, 1.3,
+     ["Võ Văn Tần", "Nguyễn Đình Chiểu", "Điện Biên Phủ", "Cách Mạng Tháng 8", "Lê Văn Sỹ", "Trần Quốc Thảo",
+      "Nam Kỳ Khởi Nghĩa", "Võ Thị Sáu"]),
+    ("q4", "Quận 4", 10.7579, 106.7050, 0.9, 8, 1.1, ["Khánh Hội", "Hoàng Diệu", "Tôn Thất Thuyết", "Nguyễn Tất Thành"]),
+    ("q5", "Quận 5", 10.7546, 106.6678, 1.1, 12, 1.0,
+     ["Trần Hưng Đạo", "An Dương Vương", "Nguyễn Trãi", "Hùng Vương", "Châu Văn Liêm", "Lê Hồng Phong"]),
+    ("q7", "Quận 7", 10.7324, 106.7218, 1.8, 16, 1.2,
+     ["Nguyễn Văn Linh", "Nguyễn Thị Thập", "Huỳnh Tấn Phát", "Nguyễn Lương Bằng", "Tân Trào", "Lê Văn Lương"]),
+    ("q10", "Quận 10", 10.7727, 106.6680, 1.0, 12, 1.0,
+     ["3 Tháng 2", "Sư Vạn Hạnh", "Thành Thái", "Tô Hiến Thành", "Lý Thường Kiệt", "Ngô Gia Tự"]),
+    ("bt", "Bình Thạnh", 10.8040, 106.7123, 1.6, 18, 1.1,
+     ["Điện Biên Phủ", "Xô Viết Nghệ Tĩnh", "Nguyễn Hữu Cảnh", "Phan Đăng Lưu", "Bạch Đằng", "Ung Văn Khiêm"]),
+    ("pn", "Phú Nhuận", 10.7994, 106.6802, 1.0, 12, 1.1,
+     ["Phan Xích Long", "Nguyễn Văn Trỗi", "Hoàng Văn Thụ", "Phan Đình Phùng", "Huỳnh Văn Bánh"]),
+    ("tb", "Tân Bình", 10.8020, 106.6528, 1.6, 14, 1.0,
+     ["Cộng Hoà", "Trường Sơn", "Hoàng Văn Thụ", "Bạch Đằng", "Lý Thường Kiệt", "Út Tịch"]),
+    ("td", "TP. Thủ Đức", 10.8040, 106.7400, 1.6, 14, 1.0,
+     ["Xa Lộ Hà Nội", "Thảo Điền", "Quốc Hương", "Mai Chí Thọ", "Song Hành", "Trần Não"]),
+]
+
+# Loại hình: (tên hiển thị trong tên bãi, trọng số theo quận trung tâm / ngoại vi)
+LOT_TYPE_WEIGHTS = {
+    "central": {"office_basement": 26, "parking_building": 10, "apartment_basement": 8, "covered_garage": 10,
+                "outdoor_commercial": 18, "street": 16, "residential": 8, "transit_hub": 4},
+    "outer":   {"office_basement": 12, "parking_building": 8, "apartment_basement": 22, "covered_garage": 12,
+                "outdoor_commercial": 22, "street": 6, "residential": 14, "transit_hub": 4},
+}
+CENTRAL = {"q1", "q3"}
+LOT_NAME_PREFIX = {
+    "office_basement": "Hầm toà nhà", "parking_building": "Nhà xe cao tầng", "apartment_basement": "Hầm chung cư",
+    "covered_garage": "Nhà xe có mái", "outdoor_commercial": "Bãi xe", "street": "Điểm đỗ lòng đường",
+    "residential": "Sân nhà", "transit_hub": "Bãi đầu mối",
+}
+CAPACITY_RANGE = {
+    "office_basement": (60, 220), "parking_building": (200, 600), "apartment_basement": (80, 300),
+    "covered_garage": (25, 80), "outdoor_commercial": (30, 120), "street": (12, 40),
+    "residential": (2, 6), "transit_hub": (100, 300),
+}
+# Hệ số giá theo loại hình (nhân với giá mẫu và hệ số quận)
+PRICE_FACTOR = {
+    "office_basement": 1.15, "parking_building": 1.0, "apartment_basement": 0.9, "covered_garage": 0.85,
+    "outdoor_commercial": 0.75, "street": 0.7, "residential": 0.6, "transit_hub": 0.8,
+}
+# Cấp tích hợp: trọng số 1..4
+LEVEL_WEIGHTS = {
+    "office_basement": [10, 30, 40, 20], "parking_building": [5, 20, 40, 35], "apartment_basement": [15, 40, 35, 10],
+    "covered_garage": [25, 45, 25, 5], "outdoor_commercial": [35, 40, 20, 5], "street": [30, 30, 35, 5],
+    "residential": [40, 55, 5, 0], "transit_hub": [10, 30, 40, 20],
+}
+
+FIRST_NAMES = ["An", "Bình", "Châu", "Dũng", "Giang", "Hà", "Hải", "Hạnh", "Hiếu", "Hoa", "Hùng", "Khánh", "Khoa",
+               "Lan", "Linh", "Long", "Mai", "Minh", "Nam", "Ngọc", "Nhung", "Phong", "Phúc", "Quân", "Quyên",
+               "Sơn", "Tâm", "Thảo", "Thành", "Trang", "Trung", "Tú", "Tuấn", "Vân", "Việt", "Vy", "Yến"]
+LAST_NAMES = ["Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Huỳnh", "Phan", "Vũ", "Võ", "Đặng", "Bùi", "Đỗ", "Ngô", "Dương"]
+MIDDLE = ["Văn", "Thị", "Minh", "Hoàng", "Thanh", "Ngọc", "Đức", "Thu", "Gia", "Quốc"]
+CARS = [("Toyota", "Vios", "sedan"), ("Toyota", "Corolla Cross", "suv"), ("Hyundai", "Accent", "sedan"),
+        ("Hyundai", "Santa Fe", "suv"), ("Kia", "Seltos", "suv"), ("Kia", "Morning", "hatchback"),
+        ("Mazda", "CX-5", "suv"), ("Mazda", "3", "sedan"), ("Honda", "City", "sedan"), ("Honda", "CR-V", "suv"),
+        ("Ford", "Ranger", "truck"), ("Ford", "Everest", "suv"), ("VinFast", "VF 5", "hatchback"),
+        ("VinFast", "VF 8", "suv"), ("Mitsubishi", "Xpander", "van"), ("Mercedes-Benz", "C 200", "sedan")]
+COLORS = ["Trắng", "Đen", "Bạc", "Xám", "Đỏ", "Xanh"]
+REVIEW_GOOD = ["Bãi rộng, dễ vào", "Bảo vệ hướng dẫn nhiệt tình", "Đến nơi là có chỗ đúng như đặt",
+               "Giá hợp lý, gần chỗ làm", "Vào ra nhanh, không phải chờ", "Hầm sạch, đủ sáng"]
+REVIEW_BAD = ["Lối vào hơi hẹp, khó quay đầu", "Đến nơi phải chờ khá lâu mới có chỗ",
+              "Giá cao hơn so với khu vực", "Thiếu đèn ở góc trong"]
+
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
-def days_ago(n: float) -> datetime:
-    return now_utc() - timedelta(days=n)
 
-def rand_dt(days_back_max=90, hour_min=7, hour_max=20) -> datetime:
-    base = now_utc() - timedelta(
-        days=random.uniform(0.5, days_back_max),
-        hours=0,
-    )
-    return base.replace(
-        hour=random.randint(hour_min, hour_max),
-        minute=random.choice([0, 15, 30, 45]),
-        second=0, microsecond=0,
-    )
-
-def gen_booking_code(seq: int) -> str:
-    d = now_utc().strftime("%Y%m%d")
-    return f"WM-{d}-{seq:04d}"
+def slugify(text: str) -> str:
+    t = unicodedata.normalize("NFD", text.replace("đ", "d").replace("Đ", "D"))
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
 
 
-# ─────────────────────────────────────────────────────────────────
-# DỮ LIỆU BÃI ĐỖ MẪU — 30 bãi tại Q1, Q3, Q5, Q7
-# ─────────────────────────────────────────────────────────────────
-# tier 1=Basic, 2=Standard, 3=Pro, 4=Elite
-# Toạ độ là GPS thực tế gần đúng tại TP.HCM. Tên và số liệu là dữ liệu giả.
-
-GARAGES_DATA = [
-
-    # ═══════════════════════════════════════════════════════════
-    # QUẬN 1  (8 garages)
-    # ═══════════════════════════════════════════════════════════
-    {
-        "slug": "bai-do-q1-01",
-        "name": "Hầm đỗ xe Nguyễn Huệ Q1",
-        "district": "Quận 1", "street": "25 Nguyễn Huệ", "ward": "Phường Bến Nghé",
-        "lat": 10.7769, "lng": 106.7009,
-        "tier": 4, "tier_score": 91.5, "total_bays": 6,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury", "super"],
-        "assessment": {"equipment_score": 93, "process_score": 90, "staff_score": 88, "capacity_score": 95, "reliability_score": 91},
-        "owner": {"username": "owner_q1_01", "name": "Trần Minh Khoa", "email": "owner.q1.01@example.com", "phone": "0901111001"},
-        "stats": {"total_services": 3250, "avg_rating": 4.85, "retention_rate": 0.72, "complaint_rate": 0.01, "on_time_rate": 0.94, "avg_actual_processing_minutes": 42},
-        "in_service": 4, "waiting": 2, "wait_minutes": 10,
-    },
-    {
-        "slug": "bai-do-q1-02",
-        "name": "Hầm đỗ xe Lê Lợi Q1",
-        "district": "Quận 1", "street": "47 Lê Lợi", "ward": "Phường Bến Thành",
-        "lat": 10.7750, "lng": 106.7003,
-        "tier": 4, "tier_score": 87.2, "total_bays": 5,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury", "super"],
-        "assessment": {"equipment_score": 91, "process_score": 85, "staff_score": 86, "capacity_score": 84, "reliability_score": 90},
-        "owner": {"username": "owner_q1_02", "name": "Nguyễn Bảo Long", "email": "owner.q1.02@example.com", "phone": "0901111011"},
-        "stats": {"total_services": 2780, "avg_rating": 4.75, "retention_rate": 0.68, "complaint_rate": 0.02, "on_time_rate": 0.92, "avg_actual_processing_minutes": 50},
-        "in_service": 3, "waiting": 1, "wait_minutes": 8,
-    },
-    {
-        "slug": "bai-do-q1-03",
-        "name": "Hầm đỗ xe Nam Kỳ Khởi Nghĩa Q1",
-        "district": "Quận 1", "street": "118 Nam Kỳ Khởi Nghĩa", "ward": "Phường Bến Thành",
-        "lat": 10.7820, "lng": 106.6972,
-        "tier": 3, "tier_score": 74.8, "total_bays": 5,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 78, "process_score": 72, "staff_score": 75, "capacity_score": 80, "reliability_score": 69},
-        "owner": {"username": "owner_q1_03", "name": "Lê Hoàng Nam", "email": "owner.q1.03@example.com", "phone": "0901111012"},
-        "stats": {"total_services": 1920, "avg_rating": 4.5, "retention_rate": 0.58, "complaint_rate": 0.03, "on_time_rate": 0.87, "avg_actual_processing_minutes": 35},
-        "in_service": 2, "waiting": 1, "wait_minutes": 15,
-    },
-    {
-        "slug": "bai-do-q1-04",
-        "name": "Hầm đỗ xe Đinh Tiên Hoàng Q1",
-        "district": "Quận 1", "street": "15 Đinh Tiên Hoàng", "ward": "Phường Đakao",
-        "lat": 10.7837, "lng": 106.7028,
-        "tier": 4, "tier_score": 89.0, "total_bays": 4,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["premium", "luxury", "super"],
-        "assessment": {"equipment_score": 95, "process_score": 88, "staff_score": 90, "capacity_score": 80, "reliability_score": 92},
-        "owner": {"username": "owner_q1_04", "name": "Phạm Anh Tuấn", "email": "owner.q1.04@example.com", "phone": "0901111013"},
-        "stats": {"total_services": 1450, "avg_rating": 4.92, "retention_rate": 0.80, "complaint_rate": 0.005, "on_time_rate": 0.96, "avg_actual_processing_minutes": 120},
-        "in_service": 2, "waiting": 0, "wait_minutes": 0,
-    },
-    {
-        "slug": "bai-do-q1-05",
-        "name": "Hầm đỗ xe Nguyễn Du Q1",
-        "district": "Quận 1", "street": "88 Nguyễn Du", "ward": "Phường Bến Nghé",
-        "lat": 10.7761, "lng": 106.6984,
-        "tier": 3, "tier_score": 70.5, "total_bays": 6,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 72, "process_score": 70, "staff_score": 72, "capacity_score": 78, "reliability_score": 60},
-        "owner": {"username": "owner_q1_05", "name": "Trần Thị Thu", "email": "owner.q1.05@example.com", "phone": "0901111014"},
-        "stats": {"total_services": 2100, "avg_rating": 4.3, "retention_rate": 0.52, "complaint_rate": 0.04, "on_time_rate": 0.85, "avg_actual_processing_minutes": 28},
-        "in_service": 3, "waiting": 2, "wait_minutes": 18,
-    },
-    {
-        "slug": "bai-do-q1-06",
-        "name": "Hầm đỗ xe Hai Bà Trưng Q1",
-        "district": "Quận 1", "street": "22 Hai Bà Trưng", "ward": "Phường Đakao",
-        "lat": 10.7815, "lng": 106.7012,
-        "tier": 3, "tier_score": 75.3, "total_bays": 4,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 80, "process_score": 75, "staff_score": 78, "capacity_score": 68, "reliability_score": 75},
-        "owner": {"username": "owner_q1_06", "name": "Vũ Đình Hưng", "email": "owner.q1.06@example.com", "phone": "0901111015"},
-        "stats": {"total_services": 1680, "avg_rating": 4.55, "retention_rate": 0.60, "complaint_rate": 0.03, "on_time_rate": 0.88, "avg_actual_processing_minutes": 55},
-        "in_service": 2, "waiting": 1, "wait_minutes": 12,
-    },
-    {
-        "slug": "bai-do-q1-07",
-        "name": "Bãi đỗ có mái che Lý Tự Trọng Q1",
-        "district": "Quận 1", "street": "233 Lý Tự Trọng", "ward": "Phường Cầu Kho",
-        "lat": 10.7760, "lng": 106.6996,
-        "tier": 2, "tier_score": 55.0, "total_bays": 8,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 58, "process_score": 58, "staff_score": 52, "capacity_score": 60, "reliability_score": 47},
-        "owner": {"username": "owner_q1_07", "name": "Đặng Văn Sơn", "email": "owner.q1.07@example.com", "phone": "0901111016"},
-        "stats": {"total_services": 4200, "avg_rating": 3.9, "retention_rate": 0.40, "complaint_rate": 0.06, "on_time_rate": 0.78, "avg_actual_processing_minutes": 18},
-        "in_service": 5, "waiting": 3, "wait_minutes": 25,
-    },
-    {
-        "slug": "bai-do-q1-08",
-        "name": "Bãi đỗ có mái che Phạm Ngũ Lão Q1",
-        "district": "Quận 1", "street": "166 Phạm Ngũ Lão", "ward": "Phường Phạm Ngũ Lão",
-        "lat": 10.7689, "lng": 106.6965,
-        "tier": 2, "tier_score": 58.5, "total_bays": 5,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 1.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 62, "process_score": 58, "staff_score": 60, "capacity_score": 55, "reliability_score": 57},
-        "owner": {"username": "owner_q1_08", "name": "Bùi Thị Lan Anh", "email": "owner.q1.08@example.com", "phone": "0901111017"},
-        "stats": {"total_services": 1350, "avg_rating": 4.1, "retention_rate": 0.45, "complaint_rate": 0.05, "on_time_rate": 0.82, "avg_actual_processing_minutes": 25},
-        "in_service": 2, "waiting": 1, "wait_minutes": 20,
-    },
-
-    # ═══════════════════════════════════════════════════════════
-    # QUẬN 3  (7 garages)
-    # ═══════════════════════════════════════════════════════════
-    {
-        "slug": "bai-do-q3-01",
-        "name": "Hầm đỗ xe Võ Văn Tần Q3",
-        "district": "Quận 3", "street": "78 Võ Văn Tần", "ward": "Phường 6",
-        "lat": 10.7834, "lng": 106.6856,
-        "tier": 4, "tier_score": 88.0, "total_bays": 4,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 3.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury", "super"],
-        "assessment": {"equipment_score": 90, "process_score": 88, "staff_score": 85, "capacity_score": 82, "reliability_score": 95},
-        "owner": {"username": "owner_q3_01", "name": "Lê Thị Hà", "email": "owner.q3.01@example.com", "phone": "0901111002"},
-        "stats": {"total_services": 2100, "avg_rating": 4.72, "retention_rate": 0.68, "complaint_rate": 0.02, "on_time_rate": 0.91, "avg_actual_processing_minutes": 65},
-        "in_service": 2, "waiting": 0, "wait_minutes": 0,
-    },
-    {
-        "slug": "bai-do-q3-02",
-        "name": "Hầm đỗ xe Bà Huyện Thanh Quan Q3",
-        "district": "Quận 3", "street": "44 Bà Huyện Thanh Quan", "ward": "Phường 9",
-        "lat": 10.7820, "lng": 106.6851,
-        "tier": 4, "tier_score": 85.5, "total_bays": 3,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 3.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["premium", "luxury", "super"],
-        "assessment": {"equipment_score": 88, "process_score": 86, "staff_score": 84, "capacity_score": 78, "reliability_score": 90},
-        "owner": {"username": "owner_q3_02", "name": "Nguyễn Tiến Đạt", "email": "owner.q3.02@example.com", "phone": "0901111021"},
-        "stats": {"total_services": 980, "avg_rating": 4.80, "retention_rate": 0.75, "complaint_rate": 0.01, "on_time_rate": 0.93, "avg_actual_processing_minutes": 90},
-        "in_service": 1, "waiting": 0, "wait_minutes": 0,
-    },
-    {
-        "slug": "bai-do-q3-03",
-        "name": "Hầm đỗ xe Trần Cao Vân Q3",
-        "district": "Quận 3", "street": "35 Trần Cao Vân", "ward": "Phường 8",
-        "lat": 10.7876, "lng": 106.6862,
-        "tier": 3, "tier_score": 73.2, "total_bays": 5,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 3.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 76, "process_score": 73, "staff_score": 72, "capacity_score": 75, "reliability_score": 70},
-        "owner": {"username": "owner_q3_03", "name": "Hoàng Thị Minh", "email": "owner.q3.03@example.com", "phone": "0901111022"},
-        "stats": {"total_services": 1560, "avg_rating": 4.4, "retention_rate": 0.55, "complaint_rate": 0.04, "on_time_rate": 0.86, "avg_actual_processing_minutes": 40},
-        "in_service": 2, "waiting": 1, "wait_minutes": 14,
-    },
-    {
-        "slug": "bai-do-q3-04",
-        "name": "Hầm đỗ xe Cách Mạng Tháng 8 Q3",
-        "district": "Quận 3", "street": "156 Cách Mạng Tháng 8", "ward": "Phường 10",
-        "lat": 10.7843, "lng": 106.6901,
-        "tier": 3, "tier_score": 69.5, "total_bays": 6,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 3.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 72, "process_score": 68, "staff_score": 70, "capacity_score": 74, "reliability_score": 63},
-        "owner": {"username": "owner_q3_04", "name": "Trần Văn Hải", "email": "owner.q3.04@example.com", "phone": "0901111023"},
-        "stats": {"total_services": 2350, "avg_rating": 4.2, "retention_rate": 0.50, "complaint_rate": 0.05, "on_time_rate": 0.84, "avg_actual_processing_minutes": 30},
-        "in_service": 3, "waiting": 2, "wait_minutes": 20,
-    },
-    {
-        "slug": "bai-do-q3-05",
-        "name": "Hầm đỗ xe Lý Chính Thắng Q3",
-        "district": "Quận 3", "street": "67 Lý Chính Thắng", "ward": "Phường 8",
-        "lat": 10.7889, "lng": 106.6875,
-        "tier": 3, "tier_score": 72.8, "total_bays": 4,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 3.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 75, "process_score": 72, "staff_score": 74, "capacity_score": 70, "reliability_score": 72},
-        "owner": {"username": "owner_q3_05", "name": "Lê Ngọc Bích", "email": "owner.q3.05@example.com", "phone": "0901111024"},
-        "stats": {"total_services": 1230, "avg_rating": 4.45, "retention_rate": 0.57, "complaint_rate": 0.03, "on_time_rate": 0.88, "avg_actual_processing_minutes": 38},
-        "in_service": 2, "waiting": 0, "wait_minutes": 0,
-    },
-    {
-        "slug": "bai-do-q3-06",
-        "name": "Bãi đỗ có mái che Nam Kỳ Khởi Nghĩa Q3",
-        "district": "Quận 3", "street": "92 Nam Kỳ Khởi Nghĩa", "ward": "Phường 7",
-        "lat": 10.7862, "lng": 106.6844,
-        "tier": 2, "tier_score": 58.0, "total_bays": 6,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 3.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 60, "process_score": 57, "staff_score": 60, "capacity_score": 58, "reliability_score": 55},
-        "owner": {"username": "owner_q3_06", "name": "Phạm Văn Tùng", "email": "owner.q3.06@example.com", "phone": "0901111025"},
-        "stats": {"total_services": 3100, "avg_rating": 3.9, "retention_rate": 0.38, "complaint_rate": 0.07, "on_time_rate": 0.77, "avg_actual_processing_minutes": 20},
-        "in_service": 4, "waiting": 2, "wait_minutes": 22,
-    },
-    {
-        "slug": "bai-do-q3-07",
-        "name": "Bãi đỗ có mái che Điện Biên Phủ Q3",
-        "district": "Quận 3", "street": "211 Điện Biên Phủ", "ward": "Phường 6",
-        "lat": 10.7907, "lng": 106.6922,
-        "tier": 2, "tier_score": 52.3, "total_bays": 8,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 3.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 55, "process_score": 55, "staff_score": 48, "capacity_score": 60, "reliability_score": 43},
-        "owner": {"username": "owner_q3_07", "name": "Ngô Văn Dũng", "email": "owner.q3.07@example.com", "phone": "0901111026"},
-        "stats": {"total_services": 5800, "avg_rating": 3.7, "retention_rate": 0.35, "complaint_rate": 0.08, "on_time_rate": 0.75, "avg_actual_processing_minutes": 16},
-        "in_service": 5, "waiting": 3, "wait_minutes": 28,
-    },
-
-    # ═══════════════════════════════════════════════════════════
-    # QUẬN 5  (8 garages)
-    # ═══════════════════════════════════════════════════════════
-    {
-        "slug": "bai-do-q5-01",
-        "name": "Hầm đỗ xe Hùng Vương Q5",
-        "district": "Quận 5", "street": "200 Hùng Vương", "ward": "Phường 9",
-        "lat": 10.7540, "lng": 106.6773,
-        "tier": 4, "tier_score": 84.0, "total_bays": 4,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 5.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury", "super"],
-        "assessment": {"equipment_score": 87, "process_score": 84, "staff_score": 82, "capacity_score": 80, "reliability_score": 87},
-        "owner": {"username": "owner_q5_01", "name": "Trần Minh Quang", "email": "owner.q5.01@example.com", "phone": "0901111031"},
-        "stats": {"total_services": 1850, "avg_rating": 4.7, "retention_rate": 0.70, "complaint_rate": 0.02, "on_time_rate": 0.90, "avg_actual_processing_minutes": 70},
-        "in_service": 2, "waiting": 1, "wait_minutes": 10,
-    },
-    {
-        "slug": "bai-do-q5-02",
-        "name": "Hầm đỗ xe An Dương Vương Q5",
-        "district": "Quận 5", "street": "55 An Dương Vương", "ward": "Phường 8",
-        "lat": 10.7531, "lng": 106.6737,
-        "tier": 3, "tier_score": 76.0, "total_bays": 5,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 5.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 79, "process_score": 76, "staff_score": 78, "capacity_score": 74, "reliability_score": 73},
-        "owner": {"username": "owner_q5_02", "name": "Lý Thị Phượng", "email": "owner.q5.02@example.com", "phone": "0901111032"},
-        "stats": {"total_services": 1640, "avg_rating": 4.5, "retention_rate": 0.58, "complaint_rate": 0.03, "on_time_rate": 0.87, "avg_actual_processing_minutes": 38},
-        "in_service": 2, "waiting": 1, "wait_minutes": 12,
-    },
-    {
-        "slug": "bai-do-q5-03",
-        "name": "Hầm đỗ xe Phan Văn Khỏe Q5",
-        "district": "Quận 5", "street": "145 Phan Văn Khỏe", "ward": "Phường 12",
-        "lat": 10.7519, "lng": 106.6751,
-        "tier": 3, "tier_score": 70.2, "total_bays": 4,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 5.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 73, "process_score": 70, "staff_score": 70, "capacity_score": 68, "reliability_score": 70},
-        "owner": {"username": "owner_q5_03", "name": "Trương Văn Bảo", "email": "owner.q5.03@example.com", "phone": "0901111033"},
-        "stats": {"total_services": 1280, "avg_rating": 4.3, "retention_rate": 0.52, "complaint_rate": 0.04, "on_time_rate": 0.85, "avg_actual_processing_minutes": 35},
-        "in_service": 2, "waiting": 1, "wait_minutes": 15,
-    },
-    {
-        "slug": "bai-do-q5-04",
-        "name": "Hầm đỗ xe Trần Hưng Đạo B Q5",
-        "district": "Quận 5", "street": "128 Trần Hưng Đạo B", "ward": "Phường 7",
-        "lat": 10.7556, "lng": 106.6818,
-        "tier": 3, "tier_score": 68.5, "total_bays": 6,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 5.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 70, "process_score": 68, "staff_score": 68, "capacity_score": 72, "reliability_score": 65},
-        "owner": {"username": "owner_q5_04", "name": "Nguyễn Thị Vân", "email": "owner.q5.04@example.com", "phone": "0901111034"},
-        "stats": {"total_services": 3200, "avg_rating": 4.2, "retention_rate": 0.48, "complaint_rate": 0.05, "on_time_rate": 0.83, "avg_actual_processing_minutes": 30},
-        "in_service": 3, "waiting": 1, "wait_minutes": 10,
-    },
-    {
-        "slug": "bai-do-q5-05",
-        "name": "Bãi đỗ có mái che Châu Văn Liêm Q5",
-        "district": "Quận 5", "street": "33 Châu Văn Liêm", "ward": "Phường 14",
-        "lat": 10.7508, "lng": 106.6763,
-        "tier": 2, "tier_score": 60.0, "total_bays": 5,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 5.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 65, "process_score": 62, "staff_score": 58, "capacity_score": 60, "reliability_score": 55},
-        "owner": {"username": "owner_q5_05", "name": "Đinh Hữu Phú", "email": "owner.q5.05@example.com", "phone": "0901111035"},
-        "stats": {"total_services": 4500, "avg_rating": 4.0, "retention_rate": 0.42, "complaint_rate": 0.05, "on_time_rate": 0.80, "avg_actual_processing_minutes": 18},
-        "in_service": 3, "waiting": 2, "wait_minutes": 18,
-    },
-    {
-        "slug": "bai-do-q5-06",
-        "name": "Bãi đỗ có mái che Ngô Quyền Q5",
-        "district": "Quận 5", "street": "77 Ngô Quyền", "ward": "Phường 6",
-        "lat": 10.7552, "lng": 106.6784,
-        "tier": 2, "tier_score": 55.5, "total_bays": 6,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 5.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 58, "process_score": 55, "staff_score": 56, "capacity_score": 58, "reliability_score": 50},
-        "owner": {"username": "owner_q5_06", "name": "Lưu Thị Kim", "email": "owner.q5.06@example.com", "phone": "0901111036"},
-        "stats": {"total_services": 5200, "avg_rating": 3.8, "retention_rate": 0.38, "complaint_rate": 0.07, "on_time_rate": 0.76, "avg_actual_processing_minutes": 20},
-        "in_service": 4, "waiting": 3, "wait_minutes": 25,
-    },
-    {
-        "slug": "bai-do-q5-07",
-        "name": "Bãi đỗ xe Nguyễn Trãi Q5",
-        "district": "Quận 5", "street": "88 Nguyễn Trãi", "ward": "Phường 3",
-        "lat": 10.7578, "lng": 106.6826,
-        "tier": 1, "tier_score": 38.0, "total_bays": 10,
-        "description": "Bãi ngoài trời, lối vào rộng, phù hợp gửi ngắn. Khu vực Quận 5.",
-        "amenities": ["cctv"],
-        "services": ["park_hourly", "park_overnight"],
-        "vehicle_types": ["standard"],
-        "assessment": {"equipment_score": 40, "process_score": 42, "staff_score": 35, "capacity_score": 45, "reliability_score": 28},
-        "owner": {"username": "owner_q5_07", "name": "Nguyễn Văn Mạnh", "email": "owner.q5.07@example.com", "phone": "0901111037"},
-        "stats": {"total_services": 8900, "avg_rating": 3.2, "retention_rate": 0.28, "complaint_rate": 0.12, "on_time_rate": 0.68, "avg_actual_processing_minutes": 12},
-        "in_service": 7, "waiting": 5, "wait_minutes": 30,
-    },
-    {
-        "slug": "bai-do-q5-08",
-        "name": "Bãi đỗ có mái che Lê Hồng Phong Q5",
-        "district": "Quận 5", "street": "222 Lê Hồng Phong", "ward": "Phường 4",
-        "lat": 10.7499, "lng": 106.6748,
-        "tier": 2, "tier_score": 57.8, "total_bays": 4,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 5.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 60, "process_score": 58, "staff_score": 60, "capacity_score": 52, "reliability_score": 58},
-        "owner": {"username": "owner_q5_08", "name": "Hứa Thị Ngọc", "email": "owner.q5.08@example.com", "phone": "0901111038"},
-        "stats": {"total_services": 1800, "avg_rating": 4.05, "retention_rate": 0.45, "complaint_rate": 0.04, "on_time_rate": 0.82, "avg_actual_processing_minutes": 22},
-        "in_service": 2, "waiting": 1, "wait_minutes": 15,
-    },
-
-    # ═══════════════════════════════════════════════════════════
-    # QUẬN 7  (7 garages)
-    # ═══════════════════════════════════════════════════════════
-    {
-        "slug": "bai-do-q7-01",
-        "name": "Hầm đỗ xe Nguyễn Thị Thập Q7",
-        "district": "Quận 7", "street": "120 Nguyễn Thị Thập", "ward": "Phường Tân Phú",
-        "lat": 10.7325, "lng": 106.7155,
-        "tier": 3, "tier_score": 72.0, "total_bays": 5,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 7.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 72, "process_score": 70, "staff_score": 75, "capacity_score": 80, "reliability_score": 63},
-        "owner": {"username": "owner_q7_01", "name": "Nguyễn Văn Bình", "email": "owner.q7.01@example.com", "phone": "0901111003"},
-        "stats": {"total_services": 1580, "avg_rating": 4.3, "retention_rate": 0.55, "complaint_rate": 0.04, "on_time_rate": 0.86, "avg_actual_processing_minutes": 32},
-        "in_service": 3, "waiting": 2, "wait_minutes": 15,
-    },
-    {
-        "slug": "bai-do-q7-02",
-        "name": "Hầm đỗ xe Huỳnh Tấn Phát Q7",
-        "district": "Quận 7", "street": "45 Huỳnh Tấn Phát", "ward": "Phường Bình Thuận",
-        "lat": 10.7231, "lng": 106.7222,
-        "tier": 4, "tier_score": 88.5, "total_bays": 5,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 7.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["premium", "luxury", "super"],
-        "assessment": {"equipment_score": 91, "process_score": 88, "staff_score": 87, "capacity_score": 85, "reliability_score": 91},
-        "owner": {"username": "owner_q7_02", "name": "Hoàng Minh Trí", "email": "owner.q7.02@example.com", "phone": "0901111041"},
-        "stats": {"total_services": 2250, "avg_rating": 4.88, "retention_rate": 0.78, "complaint_rate": 0.01, "on_time_rate": 0.95, "avg_actual_processing_minutes": 75},
-        "in_service": 3, "waiting": 1, "wait_minutes": 12,
-    },
-    {
-        "slug": "bai-do-q7-03",
-        "name": "Hầm đỗ xe Nguyễn Văn Linh Q7",
-        "district": "Quận 7", "street": "88 Nguyễn Văn Linh", "ward": "Phường Tân Hưng",
-        "lat": 10.7289, "lng": 106.7178,
-        "tier": 3, "tier_score": 74.5, "total_bays": 6,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 7.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 78, "process_score": 74, "staff_score": 76, "capacity_score": 75, "reliability_score": 69},
-        "owner": {"username": "owner_q7_03", "name": "Phạm Thị Xuân", "email": "owner.q7.03@example.com", "phone": "0901111042"},
-        "stats": {"total_services": 1890, "avg_rating": 4.45, "retention_rate": 0.60, "complaint_rate": 0.03, "on_time_rate": 0.88, "avg_actual_processing_minutes": 40},
-        "in_service": 3, "waiting": 1, "wait_minutes": 10,
-    },
-    {
-        "slug": "bai-do-q7-04",
-        "name": "Hầm đỗ xe Nguyễn Hữu Thọ Q7",
-        "district": "Quận 7", "street": "200 Nguyễn Hữu Thọ", "ward": "Phường Tân Hưng",
-        "lat": 10.7312, "lng": 106.7195,
-        "tier": 4, "tier_score": 90.2, "total_bays": 4,
-        "description": "Bãi trong hầm toà nhà, kiểm soát ra vào, bảo vệ trực 24 giờ, có trụ sạc xe điện. Khu vực Quận 7.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging", "elevator", "car_wash"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["luxury", "super"],
-        "assessment": {"equipment_score": 94, "process_score": 91, "staff_score": 89, "capacity_score": 84, "reliability_score": 93},
-        "owner": {"username": "owner_q7_04", "name": "Vũ Thanh Hùng", "email": "owner.q7.04@example.com", "phone": "0901111043"},
-        "stats": {"total_services": 820, "avg_rating": 4.95, "retention_rate": 0.85, "complaint_rate": 0.005, "on_time_rate": 0.97, "avg_actual_processing_minutes": 180},
-        "in_service": 2, "waiting": 0, "wait_minutes": 0,
-    },
-    {
-        "slug": "bai-do-q7-05",
-        "name": "Bãi đỗ có mái che Đào Trí Q7",
-        "district": "Quận 7", "street": "33 Đào Trí", "ward": "Phường Phú Thuận",
-        "lat": 10.7198, "lng": 106.7245,
-        "tier": 2, "tier_score": 58.2, "total_bays": 5,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 7.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 62, "process_score": 58, "staff_score": 60, "capacity_score": 57, "reliability_score": 54},
-        "owner": {"username": "owner_q7_05", "name": "Đỗ Văn Quý", "email": "owner.q7.05@example.com", "phone": "0901111044"},
-        "stats": {"total_services": 1420, "avg_rating": 3.95, "retention_rate": 0.40, "complaint_rate": 0.06, "on_time_rate": 0.80, "avg_actual_processing_minutes": 22},
-        "in_service": 2, "waiting": 1, "wait_minutes": 18,
-    },
-    {
-        "slug": "bai-do-q7-06",
-        "name": "Bãi đỗ có mái che Lê Văn Lương Q7",
-        "district": "Quận 7", "street": "156 Lê Văn Lương", "ward": "Phường Tân Quy",
-        "lat": 10.7352, "lng": 106.7162,
-        "tier": 2, "tier_score": 53.8, "total_bays": 8,
-        "description": "Bãi có mái che, phù hợp gửi cả ngày và gửi qua đêm. Khu vực Quận 7.",
-        "amenities": ["covered", "security_24h", "cctv"],
-        "services": ["park_hourly", "park_overnight", "park_daily"],
-        "vehicle_types": ["standard", "premium"],
-        "assessment": {"equipment_score": 56, "process_score": 54, "staff_score": 52, "capacity_score": 60, "reliability_score": 46},
-        "owner": {"username": "owner_q7_06", "name": "Tạ Thị Hồng", "email": "owner.q7.06@example.com", "phone": "0901111045"},
-        "stats": {"total_services": 6200, "avg_rating": 3.75, "retention_rate": 0.35, "complaint_rate": 0.08, "on_time_rate": 0.76, "avg_actual_processing_minutes": 14},
-        "in_service": 4, "waiting": 3, "wait_minutes": 22,
-    },
-    {
-        "slug": "bai-do-q7-07",
-        "name": "Hầm đỗ xe Cao Lo Q7",
-        "district": "Quận 7", "street": "77 Cao Lo", "ward": "Phường Tân Phú",
-        "lat": 10.7267, "lng": 106.7201,
-        "tier": 3, "tier_score": 71.0, "total_bays": 5,
-        "description": "Bãi trong hầm, kiểm soát ra vào bằng thẻ, bảo vệ trực theo ca. Khu vực Quận 7.",
-        "amenities": ["covered", "security_24h", "cctv", "ev_charging"],
-        "services": ["park_hourly", "park_overnight", "park_daily", "park_monthly"],
-        "vehicle_types": ["standard", "premium", "luxury"],
-        "assessment": {"equipment_score": 75, "process_score": 70, "staff_score": 72, "capacity_score": 68, "reliability_score": 70},
-        "owner": {"username": "owner_q7_07", "name": "Lê Trung Kiên", "email": "owner.q7.07@example.com", "phone": "0901111046"},
-        "stats": {"total_services": 1160, "avg_rating": 4.35, "retention_rate": 0.54, "complaint_rate": 0.04, "on_time_rate": 0.85, "avg_actual_processing_minutes": 30},
-        "in_service": 2, "waiting": 1, "wait_minutes": 12,
-    },
-]
-
-# ─────────────────────────────────────────────────────────────────
-# CUSTOMERS — 6 khách hàng đa dạng
-# ─────────────────────────────────────────────────────────────────
-
-CUSTOMERS_DATA = [
-    {
-        "username": "customer_an",
-        "name": "Nguyễn Văn An",
-        "email": "an@gmail.com", "phone": "0912345678",
-        "password": "Customer@2026",
-        "vehicles": [
-            {"license_plate": "51K-123.45", "brand": "VinFast", "model": "VF8",         "year": 2023, "color": "Đen",   "vehicle_type": "premium", "body_type": "suv",   "size_class": "large",  "is_default": True},
-            {"license_plate": "51A-999.99", "brand": "Mercedes-Benz", "model": "C300",  "year": 2020, "color": "Trắng", "vehicle_type": "luxury",  "body_type": "sedan", "size_class": "large",  "is_default": False},
-        ]
-    },
-    {
-        "username": "customer_binh",
-        "name": "Trần Thị Bình",
-        "email": "binh@gmail.com", "phone": "0987654321",
-        "password": "Customer@2026",
-        "vehicles": [
-            {"license_plate": "51B-444.44", "brand": "Toyota",  "model": "Camry",  "year": 2021, "color": "Bạc",   "vehicle_type": "standard", "body_type": "sedan", "size_class": "medium", "is_default": True},
-            {"license_plate": "51C-777.77", "brand": "Honda",   "model": "CR-V",   "year": 2022, "color": "Xanh",  "vehicle_type": "standard", "body_type": "suv",   "size_class": "medium", "is_default": False},
-        ]
-    },
-    {
-        "username": "customer_cuong",
-        "name": "Lê Minh Cường",
-        "email": "cuong@gmail.com", "phone": "0977888999",
-        "password": "Customer@2026",
-        "vehicles": [
-            {"license_plate": "51S-007.01", "brand": "Tesla",      "model": "Model S",  "year": 2023, "color": "Đỏ",   "vehicle_type": "luxury",  "body_type": "sedan", "size_class": "large",  "is_default": True},
-            {"license_plate": "51F-321.00", "brand": "BMW",        "model": "M5",       "year": 2019, "color": "Trắng","vehicle_type": "luxury",  "body_type": "sedan", "size_class": "large",  "is_default": False},
-            {"license_plate": "51F-000.22", "brand": "Kia",        "model": "K5",       "year": 2023, "color": "Xám",  "vehicle_type": "standard","body_type": "sedan", "size_class": "medium", "is_default": False},
-        ]
-    },
-    {
-        "username": "customer_dung",
-        "name": "Phạm Anh Dũng",
-        "email": "dung.pham@gmail.com", "phone": "0909123456",
-        "password": "Customer@2026",
-        "vehicles": [
-            {"license_plate": "51G-888.88", "brand": "Ford",     "model": "Explorer",  "year": 2022, "color": "Đen",  "vehicle_type": "premium", "body_type": "suv",   "size_class": "large",  "is_default": True},
-            {"license_plate": "51H-555.55", "brand": "Hyundai",  "model": "Santa Fe",  "year": 2021, "color": "Trắng","vehicle_type": "standard","body_type": "suv",   "size_class": "large",  "is_default": False},
-        ]
-    },
-    {
-        "username": "customer_mai",
-        "name": "Ngô Thị Mai",
-        "email": "mai.ngo@gmail.com", "phone": "0918765432",
-        "password": "Customer@2026",
-        "vehicles": [
-            {"license_plate": "51D-246.81", "brand": "Mazda",    "model": "CX-5",     "year": 2022, "color": "Đỏ",    "vehicle_type": "standard","body_type": "suv",   "size_class": "medium", "is_default": True},
-            {"license_plate": "51E-135.79", "brand": "Suzuki",   "model": "Ertiga",   "year": 2020, "color": "Bạc",   "vehicle_type": "standard","body_type": "mpv",   "size_class": "medium", "is_default": False},
-        ]
-    },
-    {
-        "username": "customer_hieu",
-        "name": "Võ Trung Hiếu",
-        "email": "hieu.vo@gmail.com", "phone": "0933456789",
-        "password": "Customer@2026",
-        "vehicles": [
-            {"license_plate": "51P-168.89", "brand": "Lamborghini", "model": "Urus",  "year": 2023, "color": "Vàng",  "vehicle_type": "super",   "body_type": "suv",   "size_class": "large",  "is_default": True},
-            {"license_plate": "51R-911.00", "brand": "Porsche",     "model": "911",   "year": 2022, "color": "Bạc",   "vehicle_type": "super",   "body_type": "coupe", "size_class": "medium", "is_default": False},
-        ]
-    },
-]
-
-# ── Price map theo tier ─────────────────────────────────────────
-SERVICE_PRICE_MAP = {
-    # Giá mẫu theo cấp bãi, đơn vị đồng. Duration tính bằng phút.
-    "park_hourly":    {"tier1": 15000,   "tier2": 20000,   "tier3": 25000,   "tier4": 30000,   "duration": 60},
-    "park_overnight": {"tier1": 50000,   "tier2": 70000,   "tier3": 90000,   "tier4": 120000,  "duration": 720},
-    "park_daily":     {"tier1": 100000,  "tier2": 150000,  "tier3": 200000,  "tier4": 250000,  "duration": 1440},
-    "park_monthly":   {"tier1": 1000000, "tier2": 1500000, "tier3": 2200000, "tier4": 3000000, "duration": 43200},
-}
-
-VEHICLE_TIER_MIN = {"standard": 1, "premium": 2, "luxury": 3, "super": 4}
-
-# ── Feedback pool ───────────────────────────────────────────────
-POSITIVE_COMMENTS = [
-    "Vào ra nhanh, đúng chỗ đã giữ.",
-    "Bảo vệ hướng dẫn tận tình.",
-    "Bãi sạch, có mái che, sẽ gửi lại.",
-    "Đi bộ tới nơi làm việc chỉ vài phút.",
-    "Giá rõ ràng, không phát sinh.",
-    "",  # để trống cũng hợp lệ
-]
-NEGATIVE_COMMENTS = [
-    "Chờ ở cổng khá lâu.",
-    "Lối vào hẹp, khó quay đầu.",
-    "Tới nơi thì chỗ đã có xe khác đỗ.",
-    "Giá cao hơn mức mong đợi.",
-]
+def jitter(lat: float, lng: float, radius_km: float):
+    r = radius_km * math.sqrt(random.random())
+    a = random.uniform(0, 2 * math.pi)
+    return (round(lat + (r / 111.0) * math.cos(a), 6),
+            round(lng + (r / (111.0 * math.cos(math.radians(lat)))) * math.sin(a), 6))
 
 
-# ─────────────────────────────────────────────────────────────────
-# SEED FUNCTIONS
-# ─────────────────────────────────────────────────────────────────
+def round_k(v: float, step: int = 1000) -> int:
+    return int(max(step, round(v / step) * step))
 
-async def reset_collections():
-    from app.api.tenant.tenant_models import TenantModel
-    from app.api.user.user_models import UserModel
-    from app.api.garage.garage_models import GarageModel
-    from app.api.garage_service.garage_service_models import GarageServiceModel
-    from app.api.vehicle.vehicle_models import VehicleModel
+
+def person_name() -> str:
+    return f"{random.choice(LAST_NAMES)} {random.choice(MIDDLE)} {random.choice(FIRST_NAMES)}"
+
+
+def plate(i: int) -> str:
+    return f"{random.choice(['51', '50', '59'])}{random.choice('ABCDEFGHK')}-{10000 + (i * 7919) % 89999:05d}"
+
+
+# ── Thuộc tính bãi theo loại hình ────────────────────────────────
+
+def make_attributes(lot_type: str) -> dict:
+    r = random.random
+    cover = {"office_basement": "basement", "apartment_basement": "basement", "parking_building": "full_roof",
+             "covered_garage": random.choice(["full_roof", "partial_roof"]), "transit_hub": random.choice(["full_roof", "open"]),
+             }.get(lot_type, "open")
+    premium = lot_type in ("office_basement", "parking_building", "transit_hub")
+    a = {
+        "cover": cover,
+        "max_height_m": round(random.choice([1.9, 2.0, 2.1, 2.2, 2.4]), 1) if cover in ("basement", "full_roof") else None,
+        "guard": "24h" if premium or (lot_type == "apartment_basement" and r() < 0.7) else random.choice(["none", "hours", "hours", "24h"]),
+        "cctv": "full" if premium else random.choice(["none", "partial", "partial", "full"]),
+        "ev_chargers": {"count": random.choice([2, 4, 6, 8]), "power_kw": random.choice([7, 11, 22, 60]), "connectors": ["Type 2"]}
+        if (premium and r() < 0.6) or (lot_type == "apartment_basement" and r() < 0.35) else {"count": 0},
+        "flood_risk": "none" if cover in ("full_roof",) or lot_type == "parking_building" else
+        random.choices(["none", "heavy_rain", "frequent"], [6, 3, 1])[0],
+        "parking_style": "stacked" if lot_type in ("residential", "street") and r() < 0.4 else
+        ("attendant" if r() < 0.3 else "self"),
+        "lighting": "good" if premium or cover == "basement" else random.choice(["basic", "basic", "good", "poor"]),
+        "surface": "concrete" if cover != "open" else random.choice(["asphalt", "concrete", "gravel"]),
+        "fire_safety": premium or cover == "basement" or r() < 0.4,
+        "restroom": premium or r() < 0.3,
+        "payment_methods": ["cash", "transfer"] + (["card"] if premium else []),
+    }
+    if a["guard"] == "hours":
+        a["guard_hours"] = "06:00 – 22:00"
+    return a
+
+
+def make_hours(lot_type: str, is_24h: bool) -> dict:
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    if is_24h:
+        return {"is_24h": True, **{d: {"open": "00:00", "close": "23:59"} for d in days}}
+    open_, close = random.choice([("06:00", "22:00"), ("05:30", "23:00"), ("07:00", "21:00")])
+    hours = {"is_24h": False, **{d: {"open": open_, "close": close} for d in days}}
+    if lot_type == "office_basement" and random.random() < 0.4:
+        hours["sunday"] = {"open": open_, "close": close, "closed": True}
+    return hours
+
+
+def make_pricing(stype: dict, factor: float) -> dict:
+    p = dict(stype["default_pricing"])
+    p["peak_rules"] = list(p.get("peak_rules") or [])
+    if p.get("mode") == "block":
+        p["first_block_price"] = round_k(p["first_block_price"] * factor)
+        p["next_block_price"] = round_k(p["next_block_price"] * factor)
+        if p.get("daily_cap"):
+            p["daily_cap"] = round_k(p["daily_cap"] * factor, 10000)
+    else:
+        p["flat_price"] = round_k(p["flat_price"] * factor, 10000 if p["flat_price"] >= 500000 else 1000)
+    return p
+
+
+# ── Main ─────────────────────────────────────────────────────────
+
+async def main(args):
+    random.seed(args.seed)
+    from app.db.mongo import init_mongo, get_motor_client
+    from app.api.auth.auth_utils import hash_password, seed_super_admin
     from app.api.booking.booking_models import BookingModel
     from app.api.capacity.capacity_models import CapacitySnapshotModel
-
-    print("\n🗑️  Resetting collections (giữ lại super_admin)...")
-    await UserModel.collection.delete_many({"role": {"$ne": "super_admin"}})
-    await TenantModel.collection.delete_many({"slug": {"$ne": "super_admin"}})
-    await GarageModel.collection.delete_many({})
-    await GarageServiceModel.collection.delete_many({})
-    await VehicleModel.collection.delete_many({})
-    await BookingModel.collection.delete_many({})
-    await CapacitySnapshotModel.collection.delete_many({})
-    print("   Done")
-
-
-async def seed_garages_and_owners():
+    from app.api.capacity.occupancy_profile_utils import occupancy_profile
+    from app.api.garage.garage_classification_utils import compute_grade, suggest_checklist
+    from app.api.garage.garage_models import GarageModel
+    from app.api.garage.garage_stats_utils import recompute_garage_stats
+    from app.api.garage_service.garage_service_models import GarageServiceModel
+    from app.api.garage_service.pricing_utils import quote_price, display_price, to_local, LOCAL_TZ
+    from app.api.service_type.service_type_models import ServiceTypeModel
+    from app.api.service_type.service_type_utils import seed_default_service_types
     from app.api.tenant.tenant_models import TenantModel
     from app.api.user.user_models import UserModel
-    from app.api.garage.garage_models import GarageModel
-    from app.api.auth.auth_utils import hash_password
-
-    print(f"\n🏢 Seeding {len(GARAGES_DATA)} garages & owners...")
-    garage_docs = {}
-
-    for g in GARAGES_DATA:
-        slug = g["slug"]
-        now = now_utc()
-
-        existing_tenant = await TenantModel.collection.find_one({"slug": slug})
-        if existing_tenant:
-            garage_doc = await GarageModel.collection.find_one({"slug": slug})
-            if garage_doc:
-                garage_docs[slug] = garage_doc
-            continue
-
-        # Tenant
-        tenant_doc = TenantModel(
-            tenant_id=slug,
-            name=g["name"],
-            slug=slug,
-            type="garage",
-            status="active",
-            contact={"phone": g["owner"]["phone"], "email": g["owner"]["email"]},
-            subscription_plan="pro" if g["tier"] >= 3 else "basic",
-            settings={"timezone": "Asia/Ho_Chi_Minh", "currency": "VND", "language": "vi"},
-            created_at=now, updated_at=now,
-            created_by="seed", updated_by="seed",
-        )
-        await tenant_doc.commit()
-
-        # Owner
-        owner = g["owner"]
-        user_doc = UserModel(
-            tenant_id=slug,
-            username=owner["username"],
-            email=owner["email"],
-            phone=owner["phone"],
-            password_hash=hash_password("GarageOwner@2026"),
-            name=owner["name"],
-            role="garage_owner",
-            is_active=True,
-            created_at=now, updated_at=now,
-            created_by="seed", updated_by="seed",
-        )
-        await user_doc.commit()
-        await TenantModel.collection.update_one(
-            {"_id": tenant_doc.pk},
-            {"$set": {"owner_user_id": str(user_doc.pk)}}
-        )
-
-        # Garage
-        garage = GarageModel(
-            tenant_id=slug,
-            name=g["name"],
-            slug=slug,
-            location={"type": "Point", "coordinates": [g["lng"], g["lat"]]},
-            address={
-                "street": g["street"],
-                "ward": g.get("ward", ""),
-                "district": g["district"],
-                "city": "TP Hồ Chí Minh",
-                "province": "TP Hồ Chí Minh",
-            },
-            tier=g["tier"],
-            tier_score=g["tier_score"],
-            tier_assessment={
-                **g["assessment"],
-                "last_assessed_at": days_ago(30),
-                "assessed_by": "system",
-            },
-            capacity={
-                "total_bays": g["total_bays"],
-                "max_vehicles_per_hour": g["total_bays"] * 2,
-                "avg_processing_time_minutes": g["stats"].get("avg_actual_processing_minutes", 30),
-            },
-            operating_hours={
-                "monday":    {"open": "07:00", "close": "20:00"},
-                "tuesday":   {"open": "07:00", "close": "20:00"},
-                "wednesday": {"open": "07:00", "close": "20:00"},
-                "thursday":  {"open": "07:00", "close": "20:00"},
-                "friday":    {"open": "07:00", "close": "21:00"},
-                "saturday":  {"open": "07:00", "close": "21:00"},
-                "sunday":    {"open": "08:00", "close": "18:00"},
-            },
-            services_offered=g["services"],
-            vehicle_types_accepted=g["vehicle_types"],
-            amenities=g["amenities"],
-            description=g["description"],
-            status="active",
-            is_verified=g["tier"] >= 3,
-            is_accepting_bookings=True,
-            current_load={
-                "vehicles_in_service": g["in_service"],
-                "vehicles_waiting": g["waiting"],
-                "estimated_wait_minutes": g["wait_minutes"],
-                "last_updated": now,
-            },
-            stats=g["stats"],
-            created_at=days_ago(random.randint(180, 365)),
-            updated_at=now,
-            created_by="seed", updated_by="seed",
-        )
-        await garage.commit()
-        garage_doc = await GarageModel.collection.find_one({"_id": garage.pk})
-        garage_docs[slug] = garage_doc
-        print(f"   [{g['district']}] {g['name']} — Tier {g['tier']}")
-
-    return garage_docs
-
-
-async def seed_garage_services(garage_docs: dict):
-    from app.api.garage_service.garage_service_models import GarageServiceModel
-
-    print("\n🛠️  Seeding garage services...")
-    for gdata in GARAGES_DATA:
-        slug = gdata["slug"]
-        garage = garage_docs.get(slug)
-        if not garage:
-            continue
-
-        garage_id = garage["_id"]
-        tier_key = f"tier{gdata['tier']}"
-        now = now_utc()
-
-        for svc_code in gdata["services"]:
-            existing = await GarageServiceModel.collection.find_one({
-                "garage_id": garage_id, "service_type_code": svc_code
-            })
-            if existing:
-                continue
-
-            price_info = SERVICE_PRICE_MAP.get(svc_code, {})
-            price = price_info.get(tier_key) or price_info.get("tier1", 100000)
-            # Add slight price variation per garage (+/-10%)
-            price = int(price * random.uniform(0.9, 1.1))
-            duration = price_info.get("duration", 30)
-
-            await GarageServiceModel.collection.insert_one({
-                "tenant_id": slug,
-                "garage_id": garage_id,
-                "service_type_code": svc_code,
-                "price": price,
-                "estimated_duration_minutes": duration,
-                "is_available": True,
-                "created_at": now, "updated_at": now,
-                "created_by": "seed", "updated_by": "seed",
-            })
-
-    total = await GarageServiceModel.collection.count_documents({})
-    print(f"   {total} service offerings seeded")
-
-
-async def seed_customers_and_vehicles():
-    from app.api.user.user_models import UserModel
     from app.api.vehicle.vehicle_models import VehicleModel
-    from app.api.auth.auth_utils import hash_password
-
-    print(f"\n👥 Seeding {len(CUSTOMERS_DATA)} customers & vehicles...")
-    customer_docs = {}
-
-    for c in CUSTOMERS_DATA:
-        now = now_utc()
-        existing = await UserModel.collection.find_one({"username": c["username"]})
-        if existing:
-            vehicles = await VehicleModel.collection.find(
-                {"owner_user_id": str(existing["_id"])}
-            ).to_list(10)
-            customer_docs[c["username"]] = {"user": existing, "vehicles": vehicles}
-            continue
-
-        user = UserModel(
-            tenant_id="platform",
-            username=c["username"],
-            email=c["email"],
-            phone=c["phone"],
-            password_hash=hash_password(c["password"]),
-            name=c["name"],
-            role="customer",
-            is_active=True,
-            created_at=days_ago(random.randint(60, 180)),
-            updated_at=now,
-            created_by="seed", updated_by="seed",
-        )
-        await user.commit()
-        user_doc = await UserModel.collection.find_one({"_id": user.pk})
-        user_id = str(user.pk)
-
-        vehicles = []
-        for v in c["vehicles"]:
-            vehicle = VehicleModel(
-                tenant_id="platform",
-                owner_user_id=user_id,
-                license_plate=v["license_plate"],
-                brand=v["brand"],
-                model=v["model"],
-                year=v["year"],
-                color=v["color"],
-                vehicle_type=v["vehicle_type"],
-                body_type=v["body_type"],
-                size_class=v["size_class"],
-                minimum_garage_tier=VEHICLE_TIER_MIN[v["vehicle_type"]],
-                is_default=v["is_default"],
-                is_active=True,
-                created_at=days_ago(random.randint(60, 180)),
-                updated_at=now,
-                created_by="seed", updated_by="seed",
-            )
-            await vehicle.commit()
-            vdoc = await VehicleModel.collection.find_one({"_id": vehicle.pk})
-            vehicles.append(vdoc)
-
-        customer_docs[c["username"]] = {"user": user_doc, "vehicles": vehicles}
-        print(f"   {c['name']} — {len(vehicles)} vehicles")
-
-    return customer_docs
-
-
-async def seed_bookings(garage_docs: dict, customer_docs: dict):
-    """
-    Tạo ~120 bookings trải đều 90 ngày qua:
-    - Lịch sử đa dạng status để fuel analytics
-    - Hôm nay có bookings active (in_service, confirmed) cho dashboard demo
-    - Đảm bảo mỗi garage có ít nhất 3 bookings
-    """
-    from app.api.booking.booking_models import BookingModel
-
-    # Kiểm tra đã có booking chưa
-    existing_count = await BookingModel.collection.count_documents({})
-    if existing_count > 10:
-        print(f"\n📅 Bookings already exist ({existing_count}), skipping")
-        return
-
-    print("\n📅 Seeding bookings (~120 bookings over 90 days)...")
-
-    garage_slugs = list(garage_docs.keys())
-    customer_list = list(customer_docs.values())
-
-    def _get_gdata(slug):
-        return next((g for g in GARAGES_DATA if g["slug"] == slug), None)
-
-    def _pick_vehicle(cdata, garage_tier):
-        eligible = [
-            v for v in cdata["vehicles"]
-            if VEHICLE_TIER_MIN.get(v.get("vehicle_type", "standard"), 1) <= garage_tier
-        ]
-        return random.choice(eligible) if eligible else cdata["vehicles"][0]
-
-    def _pick_service(gdata):
-        svcs = gdata["services"]
-        # Trọng số: gửi theo giờ nhiều nhất, gói tháng ít nhất
-        weights = []
-        for s in svcs:
-            if "hourly" in s:       weights.append(60)
-            elif "overnight" in s:  weights.append(20)
-            elif "daily" in s:      weights.append(12)
-            else:                   weights.append(8)
-        return random.choices(svcs, weights=weights)[0]
-
-    def _build_timestamps(status, req_time, svc_duration):
-        ts = {"created_at": req_time - timedelta(hours=random.uniform(1, 24))}
-        if status not in ("pending", "expired"):
-            ts["confirmed_at"] = ts["created_at"] + timedelta(minutes=random.randint(5, 30))
-        if status in ("customer_arriving", "customer_arrived", "in_service", "completed",
-                      "no_show", "cancelled_by_customer"):
-            ts["customer_departed_at"] = req_time - timedelta(minutes=random.randint(20, 60))
-        if status in ("customer_arrived", "in_service", "completed"):
-            ts["customer_arrived_at"] = req_time + timedelta(minutes=random.randint(-5, 15))
-        if status in ("in_service", "completed"):
-            ts["service_started_at"] = ts["customer_arrived_at"] + timedelta(minutes=random.randint(2, 8))
-        if status == "completed":
-            ts["service_completed_at"] = ts["service_started_at"] + timedelta(
-                minutes=svc_duration + random.randint(-5, 15)
-            )
-        if status in ("cancelled_by_customer", "cancelled_by_garage", "no_show"):
-            anchor = ts.get("confirmed_at") or ts["created_at"]
-            ts["cancelled_at"] = anchor + timedelta(hours=random.uniform(0.5, 6))
-        return ts
-
-    seq = 1
-    total_inserted = 0
-
-    # ── 1. Ensure every garage has at least 3 completed historical bookings ──
-    for slug in garage_slugs:
-        garage = garage_docs[slug]
-        gdata = _get_gdata(slug)
-        if not gdata:
-            continue
-        for _ in range(random.randint(3, 6)):
-            cdata = random.choice(customer_list)
-            vehicle = _pick_vehicle(cdata, gdata["tier"])
-            svc_code = _pick_service(gdata)
-            price_info = SERVICE_PRICE_MAP.get(svc_code, {})
-            tier_key = f"tier{gdata['tier']}"
-            price = int((price_info.get(tier_key) or price_info.get("tier1", 100000)) * random.uniform(0.9, 1.1))
-            duration = price_info.get("duration", 30)
-
-            req_time = rand_dt(days_back_max=80, hour_min=8, hour_max=18)
-            ts = _build_timestamps("completed", req_time, duration)
-
-            rating = random.choices([3, 4, 4, 5, 5, 5], k=1)[0]
-            comment = random.choice(POSITIVE_COMMENTS if rating >= 4 else NEGATIVE_COMMENTS)
-
-            doc = {
-                "tenant_id": slug,
-                "booking_code": gen_booking_code(seq),
-                "customer_id": cdata["user"]["_id"],
-                "garage_id": garage["_id"],
-                "vehicle_id": vehicle["_id"],
-                "service_type_code": svc_code,
-                "price": price,
-                "requested_time": req_time,
-                "estimated_arrival": req_time,
-                "status": "completed",
-                "timestamps": ts,
-                "matching_context": {
-                    "match_score": round(random.uniform(65, 98), 1),
-                    "estimated_travel_minutes": random.randint(5, 35),
-                    "was_top_recommendation": random.choice([True, True, False]),
-                },
-                "feedback": {"rating": rating, "quick_feedback": "thumbs_up" if rating >= 4 else "thumbs_down", "comment": comment},
-                "cancellation_reason": "",
-                "cancelled_by": "",
-                "created_at": ts["created_at"],
-                "updated_at": now_utc(),
-                "created_by": "seed", "updated_by": "seed",
-            }
-            exists = await BookingModel.collection.find_one({"booking_code": doc["booking_code"]})
-            if not exists:
-                await BookingModel.collection.insert_one(doc)
-                total_inserted += 1
-            seq += 1
-
-    # ── 2. Bulk historical bookings (90 days) — diverse statuses ──
-    STATUS_WEIGHTS = {
-        "completed": 62,
-        "cancelled_by_customer": 12,
-        "cancelled_by_garage": 5,
-        "no_show": 8,
-        "expired": 3,
-        "interrupted": 2,
-    }
-    statuses_pool = []
-    for s, w in STATUS_WEIGHTS.items():
-        statuses_pool.extend([s] * w)
-
-    for day_offset in range(3, 90):
-        day_date = now_utc() - timedelta(days=day_offset)
-        dow = day_date.weekday()
-        # More bookings on weekends + peak tiers
-        daily_count = random.randint(2, 5) if dow >= 5 else random.randint(1, 3)
-
-        for _ in range(daily_count):
-            slug = random.choice(garage_slugs)
-            garage = garage_docs[slug]
-            gdata = _get_gdata(slug)
-            if not gdata:
-                continue
-
-            cdata = random.choice(customer_list)
-            vehicle = _pick_vehicle(cdata, gdata["tier"])
-            svc_code = _pick_service(gdata)
-            price_info = SERVICE_PRICE_MAP.get(svc_code, {})
-            tier_key = f"tier{gdata['tier']}"
-            price = int((price_info.get(tier_key) or price_info.get("tier1", 100000)) * random.uniform(0.9, 1.1))
-            duration = price_info.get("duration", 30)
-
-            req_hour = random.choice([8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
-            req_time = day_date.replace(hour=req_hour, minute=random.choice([0, 15, 30, 45]), second=0, microsecond=0)
-
-            status = random.choice(statuses_pool)
-            ts = _build_timestamps(status, req_time, duration)
-
-            feedback = {}
-            if status == "completed":
-                rating = random.choices([3, 4, 4, 5, 5, 5], k=1)[0]
-                if random.random() < 0.65:  # 65% leave feedback
-                    comment = random.choice(POSITIVE_COMMENTS if rating >= 4 else NEGATIVE_COMMENTS)
-                    feedback = {"rating": rating, "quick_feedback": "thumbs_up" if rating >= 4 else "thumbs_down", "comment": comment}
-
-            doc = {
-                "tenant_id": slug,
-                "booking_code": gen_booking_code(seq),
-                "customer_id": cdata["user"]["_id"],
-                "garage_id": garage["_id"],
-                "vehicle_id": vehicle["_id"],
-                "service_type_code": svc_code,
-                "price": price,
-                "requested_time": req_time,
-                "estimated_arrival": req_time,
-                "status": status,
-                "timestamps": ts,
-                "matching_context": {
-                    "match_score": round(random.uniform(60, 97), 1),
-                    "estimated_travel_minutes": random.randint(5, 40),
-                    "was_top_recommendation": random.choice([True, False]),
-                },
-                "feedback": feedback,
-                "cancellation_reason": "Bận đột xuất" if "customer" in status else "Gara hết slot" if "garage" in status else "",
-                "cancelled_by": "customer" if "cancelled_by_customer" in status else "garage" if "cancelled_by_garage" in status else "",
-                "created_at": ts["created_at"],
-                "updated_at": now_utc(),
-                "created_by": "seed", "updated_by": "seed",
-            }
-            exists = await BookingModel.collection.find_one({"booking_code": doc["booking_code"]})
-            if not exists:
-                await BookingModel.collection.insert_one(doc)
-                total_inserted += 1
-            seq += 1
-
-    # ── 3. Today's active bookings — cho dashboard demo ──
-    today_garages = garage_slugs[:6]  # Lấy 6 garage đầu (Q1 + Q3) có nhiều activity nhất
-    active_statuses = ["confirmed", "in_service", "pending", "customer_arriving", "customer_arrived"]
-
-    for i, slug in enumerate(today_garages):
-        garage = garage_docs[slug]
-        gdata = _get_gdata(slug)
-        if not gdata:
-            continue
-        cdata = random.choice(customer_list)
-        vehicle = _pick_vehicle(cdata, gdata["tier"])
-        svc_code = _pick_service(gdata)
-        price_info = SERVICE_PRICE_MAP.get(svc_code, {})
-        tier_key = f"tier{gdata['tier']}"
-        price = int((price_info.get(tier_key) or price_info.get("tier1", 100000)))
-        duration = price_info.get("duration", 30)
-
-        now = now_utc()
-        req_time = now + timedelta(hours=random.uniform(-1, 3))
-        req_time = req_time.replace(minute=0, second=0, microsecond=0)
-        status = active_statuses[i % len(active_statuses)]
-        ts = _build_timestamps(status, req_time, duration)
-        ts["created_at"] = now - timedelta(hours=random.uniform(1, 8))
-
-        doc = {
-            "tenant_id": slug,
-            "booking_code": gen_booking_code(seq),
-            "customer_id": cdata["user"]["_id"],
-            "garage_id": garage["_id"],
-            "vehicle_id": vehicle["_id"],
-            "service_type_code": svc_code,
-            "price": price,
-            "requested_time": req_time,
-            "estimated_arrival": req_time,
-            "status": status,
-            "timestamps": ts,
-            "matching_context": {"match_score": round(random.uniform(75, 98), 1), "estimated_travel_minutes": random.randint(5, 20), "was_top_recommendation": True},
-            "feedback": {},
-            "cancellation_reason": "",
-            "cancelled_by": "",
-            "created_at": ts["created_at"],
-            "updated_at": now,
-            "created_by": "seed", "updated_by": "seed",
-        }
-        exists = await BookingModel.collection.find_one({"booking_code": doc["booking_code"]})
-        if not exists:
-            await BookingModel.collection.insert_one(doc)
-            total_inserted += 1
-        seq += 1
-
-    total = await BookingModel.collection.count_documents({})
-    print(f"   {total_inserted} bookings inserted — {total} total in DB")
-
-
-async def seed_capacity_snapshots(garage_docs: dict):
-    """4 tuần dữ liệu giờ cho capacity chart. Thêm cả snapshots hôm nay."""
-    from app.api.capacity.capacity_models import CapacitySnapshotModel
-
-    print("\n📊 Seeding capacity snapshots (4 tuần + hôm nay)...")
-
-    # Typical hourly load pattern (ratio 0.0–1.0)
-    HOURLY_PATTERN = {
-        7: 0.12, 8: 0.30, 9: 0.52, 10: 0.68, 11: 0.82,
-        12: 0.93, 13: 0.88, 14: 0.82, 15: 0.72, 16: 0.65,
-        17: 0.58, 18: 0.45, 19: 0.30, 20: 0.15,
-    }
-
-    total_inserted = 0
-    now = now_utc()
-
-    for gdata in GARAGES_DATA:
-        slug = gdata["slug"]
-        garage = garage_docs.get(slug)
-        if not garage:
-            continue
-
-        garage_id = garage["_id"]
-        total_bays = gdata["total_bays"]
-        tier = gdata["tier"]
-
-        existing_count = await CapacitySnapshotModel.collection.count_documents({"garage_id": garage_id})
-        if existing_count > 100:
-            continue
-
-        snapshot_count = 0
-        # 28 ngày qua (kể cả hôm nay = 29 ngày)
-        for day_offset in range(28, -1, -1):
-            snap_date = (now - timedelta(days=day_offset)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            dow = snap_date.weekday()
-            is_weekend = dow >= 5
-
-            for hour, base_load in HOURLY_PATTERN.items():
-                # Noise + weekend boost + tier boost
-                noise = random.uniform(-0.08, 0.08)
-                weekend_boost = 0.15 if is_weekend else 0.0
-                tier_factor = 1.0 + (tier - 1) * 0.06  # tier 4 → 1.18x busier
-                lunch_boost = 0.1 if 11 <= hour <= 13 else 0.0
-
-                load_ratio = min(1.0, max(0.0,
-                    (base_load + noise + weekend_boost + lunch_boost) * tier_factor
-                ))
-                in_svc = min(total_bays, round(load_ratio * total_bays))
-                overflow = max(0.0, load_ratio * total_bays - total_bays)
-                waiting = min(int(overflow) + (1 if overflow > 0.5 else 0), total_bays)
-                wait_min = int(waiting * 20 / max(total_bays, 1)) if waiting else 0
-                avail = max(0, total_bays - in_svc)
-
-                snap_dt = snap_date.replace(hour=hour)
-
-                # Chỉ insert nếu giờ đó đã qua (hoặc ngày qua)
-                if day_offset > 0 or snap_dt <= now:
-                    await CapacitySnapshotModel.collection.insert_one({
-                        "tenant_id": slug,
-                        "garage_id": garage_id,
-                        "timestamp": snap_dt,
-                        "vehicles_in_service": in_svc,
-                        "vehicles_waiting": waiting,
-                        "available_bays": avail,
-                        "estimated_wait_minutes": wait_min,
-                        "staff_on_duty": max(1, round(total_bays * 0.8)),
-                        "hour_of_day": hour,
-                        "day_of_week": dow,
-                        "created_at": snap_dt,
-                        "updated_at": snap_dt,
-                        "created_by": "seed", "updated_by": "seed",
-                    })
-                    snapshot_count += 1
-
-        total_inserted += snapshot_count
-
-    print(f"   {total_inserted} capacity snapshots seeded")
-
-
-# ─────────────────────────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────────────────────────
-
-async def main(reset: bool = False):
-    from app.db.mongo import init_mongo
-
-    print("=" * 65)
-    print("  Seed Data: 30 bai do xe tai TP.HCM (Q1 Q3 Q5 Q7)")
-    print("=" * 65)
 
     init_mongo()
-
-    if reset:
-        await reset_collections()
-
-    from app.api.service_type.service_type_utils import seed_default_service_types
+    _ = get_motor_client()
+    from main import ensure_indexes
+    await ensure_indexes()
+    await seed_super_admin()
     await seed_default_service_types()
-    print("\nService types ready")
+    stypes = {s["code"]: s async for s in ServiceTypeModel.collection.find({})}
 
-    garage_docs   = await seed_garages_and_owners()
-    await seed_garage_services(garage_docs)
-    customer_docs = await seed_customers_and_vehicles()
-    await seed_bookings(garage_docs, customer_docs)
-    await seed_capacity_snapshots(garage_docs)
+    if args.reset:
+        logger.info("Xoá dữ liệu demo cũ…")
+        demo_garages = [g["_id"] async for g in GarageModel.collection.find({"created_by": SEED_TAG}, {"_id": 1})]
+        for coll, q in [
+            (BookingModel, {"garage_id": {"$in": demo_garages}}),
+            (CapacitySnapshotModel, {"garage_id": {"$in": demo_garages}}),
+            (GarageServiceModel, {"garage_id": {"$in": demo_garages}}),
+            (GarageModel, {"created_by": SEED_TAG}),
+            (TenantModel, {"created_by": SEED_TAG}),
+            (VehicleModel, {"created_by": SEED_TAG}),
+            (UserModel, {"created_by": SEED_TAG}),
+        ]:
+            r = await coll.collection.delete_many(q)
+            logger.info(f"  {coll.collection.name}: -{r.deleted_count}")
+    elif await GarageModel.collection.count_documents({"created_by": SEED_TAG}):
+        logger.error("Đã có dữ liệu demo. Chạy lại với --reset để seed lại.")
+        return
 
-    # Summary
-    from app.api.user.user_models import UserModel
-    from app.api.garage.garage_models import GarageModel
-    from app.api.vehicle.vehicle_models import VehicleModel
-    from app.api.booking.booking_models import BookingModel
-    from app.api.garage_service.garage_service_models import GarageServiceModel
-    from app.api.capacity.capacity_models import CapacitySnapshotModel
-    from app.api.tenant.tenant_models import TenantModel
+    now = now_utc()
+    owner_hash = hash_password(OWNER_PASSWORD)
+    customer_hash = hash_password(CUSTOMER_PASSWORD)
+    meta = {"created_at": now, "updated_at": now, "created_by": SEED_TAG, "updated_by": SEED_TAG}
 
-    total_snaps = await CapacitySnapshotModel.collection.count_documents({})
-    total_bookings = await BookingModel.collection.count_documents({})
-    total_garages = await GarageModel.collection.count_documents({})
-    total_users = await UserModel.collection.count_documents({})
+    # ── 1. Bãi đỗ + chủ bãi ──
+    scale = args.lots / sum(d[5] for d in DISTRICTS)
+    garages, tenants, owners, services = [], [], [], []
+    used_slugs = set()
+    for code, dname, clat, clng, radius, count, dfactor, streets in DISTRICTS:
+        n = max(1, round(count * scale))
+        weights = LOT_TYPE_WEIGHTS["central" if code in CENTRAL else "outer"]
+        for i in range(1, n + 1):
+            lot_type = random.choices(list(weights), list(weights.values()))[0]
+            street = random.choice(streets)
+            number = random.randint(1, 350)
+            name = f"{LOT_NAME_PREFIX[lot_type]} {street}" + (f" {number}" if lot_type in ("residential", "outdoor_commercial") else "")
+            slug = slugify(f"{name}-{code}")
+            while slug in used_slugs:
+                slug = f"{slug}-{random.randint(2, 99)}"
+            used_slugs.add(slug)
+            lat, lng = jitter(clat, clng, radius)
+            attrs = make_attributes(lot_type)
+            level = random.choices([1, 2, 3, 4], LEVEL_WEIGHTS[lot_type])[0]
+            if lot_type == "residential":
+                level = min(level, 2)
+            lo, hi = CAPACITY_RANGE[lot_type]
+            total = random.randint(lo, hi)
+            is_24h = lot_type in ("parking_building", "apartment_basement", "transit_hub") or random.random() < 0.25
+            status = random.choices(["active", "pending_review", "suspended"], [92, 6, 2])[0]
+            owner_username = f"owner_{code}_{i:02d}"
 
-    print("\n" + "=" * 65)
-    print("  📦 Database Summary")
-    print("=" * 65)
-    print(f"  Tenants       : {await TenantModel.collection.count_documents({})}")
-    print(f"  Garages       : {total_garages} ({await GarageModel.collection.count_documents({'tier': 4})} Elite, {await GarageModel.collection.count_documents({'tier': 3})} Pro, {await GarageModel.collection.count_documents({'tier': 2})} Std, {await GarageModel.collection.count_documents({'tier': 1})} Basic)")
-    print(f"  Users         : {total_users} ({await UserModel.collection.count_documents({'role': 'garage_owner'})} owners + {await UserModel.collection.count_documents({'role': 'customer'})} customers)")
-    print(f"  Svc Offerings : {await GarageServiceModel.collection.count_documents({})}")
-    print(f"  Vehicles      : {await VehicleModel.collection.count_documents({})}")
-    print(f"  Bookings      : {total_bookings} ({await BookingModel.collection.count_documents({'status': 'completed'})} completed)")
-    print(f"  Cap Snapshots : {total_snaps}")
+            svc_codes = ["park_hourly"]
+            if is_24h or random.random() < 0.5:
+                svc_codes.append("park_overnight")
+            if lot_type not in ("street",) and random.random() < 0.6:
+                svc_codes.append("park_daily")
+            if lot_type in ("office_basement", "parking_building", "covered_garage", "outdoor_commercial") and random.random() < 0.6:
+                svc_codes.append("park_workday")
+            if lot_type not in ("street",) and random.random() < 0.55:
+                svc_codes.append("park_monthly")
+            if attrs["ev_chargers"]["count"]:
+                svc_codes.append("ev_charging")
+            if lot_type in ("office_basement", "parking_building", "covered_garage") and random.random() < 0.3:
+                svc_codes.append("car_wash")
+            if lot_type in ("office_basement", "transit_hub") and random.random() < 0.2:
+                svc_codes.append("valet")
 
-    print("\n" + "=" * 65)
-    print("  Tai khoan thu nghiem")
-    print("=" * 65)
-    print("  Super Admin   : xem SUPER_ADMIN_USERNAME va SUPER_ADMIN_PASSWORD trong .env")
-    print("  Customers     : customer_an, customer_binh, customer_cuong,")
-    print("                  customer_dung, customer_mai, customer_hieu")
-    print("                  Password: Customer@2026")
-    print("  Chu bai        : owner_q1_01 ... owner_q7_08")
-    print("                  Password: GarageOwner@2026")
-    print("\n  Thu cong chu bai:")
-    print("  Login: owner_q1_01 / GarageOwner@2026")
-    print("  GET /garage-portal/dashboard/overview")
-    print("=" * 65)
-    print("\n  Seeding completed.\n")
+            reservable = {"street": 0.3, "residential": 1.0}.get(lot_type, random.choice([0.3, 0.4, 0.5, 0.6]))
+            monthly = int(total * random.choice([0, 0.1, 0.2, 0.3])) if "park_monthly" in svc_codes else 0
+            g = {
+                "_id": None, "tenant_id": slug, "name": name, "slug": slug,
+                "location": {"type": "Point", "coordinates": [lng, lat]},
+                "entrance_location": {"type": "Point", "coordinates": [round(lng + random.uniform(-0.0003, 0.0003), 6),
+                                                                       round(lat + random.uniform(-0.0003, 0.0003), 6)]},
+                "address": {"street": f"{number} {street}", "ward": "", "district": dname, "city": "TP. Hồ Chí Minh"},
+                "lot_type": lot_type, "integration_level": level,
+                "capacity": {"total_spots": total, "walk_in_spots": max(0, total - monthly),
+                             "monthly_spots": monthly, "reservable_ratio": reservable,
+                             "grace_minutes": random.choice([15, 15, 20, 30])},
+                "attributes": attrs,
+                "occupancy": {"occupied": 0, "source": "manual", "updated_at": None},
+                "operating_hours": make_hours(lot_type, is_24h),
+                "services_offered": svc_codes,
+                "photos": [],
+                "description": f"{LOT_NAME_PREFIX[lot_type]} tại {street}, {dname}. Dữ liệu demo.",
+                "contacts": {"phone": f"09{random.randint(10000000, 99999999)}", "manager_name": person_name()},
+                "status": status, "is_verified": False,
+                "is_accepting_bookings": status == "active" and random.random() > 0.03,
+                "grade": 1, "grade_score": 0, "grade_assessment": {}, "quality_score": 0.0, "next_inspection_at": None,
+                "stats": {}, **meta,
+            }
+            # Kiểm định: bãi đang hoạt động cấp ≥ 2 phần lớn đã được kiểm định
+            if status == "active" and (level >= 2 or random.random() < 0.3):
+                items = suggest_checklist(g)
+                for k in items:            # người kiểm định chỉnh vài mục so với khai báo
+                    if random.random() < 0.08:
+                        items[k] = not items[k]
+                gr = compute_grade(items)
+                assessed = now - timedelta(days=random.randint(5, 170))
+                g.update({
+                    "grade": gr["grade"], "grade_score": gr["score"], "is_verified": True,
+                    "grade_assessment": {"items": items, "note": "", "assessed_at": assessed, "assessed_by": "superadmin"},
+                    "next_inspection_at": assessed + timedelta(days=180),
+                })
+            g.pop("_id")
+            garages.append(g)
+            tenants.append({
+                "tenant_id": slug, "name": name, "slug": slug, "type": "garage", "status": "active",
+                "contact": {"phone": g["contacts"]["phone"], "email": f"{owner_username}@example.com",
+                            "address": f"{number} {street}, {dname}, TP. Hồ Chí Minh"},
+                "subscription_plan": "free",
+                "settings": {"timezone": "Asia/Ho_Chi_Minh", "currency": "VND", "language": "vi"}, **meta,
+            })
+            owners.append({
+                "tenant_id": slug, "username": owner_username, "email": f"{owner_username}@example.com",
+                "phone": g["contacts"]["phone"], "password_hash": owner_hash, "name": person_name(),
+                "role": "garage_owner", "is_active": True, "allowed_tenant_ids": [],
+                "customer_profile": {}, "staff_profile": {}, "last_login": None, **meta,
+            })
+            factor = dfactor * PRICE_FACTOR[lot_type] * random.uniform(0.9, 1.1)
+            for sc in svc_codes:
+                pricing = make_pricing(stypes[sc], factor if stypes[sc]["category"] != "addon" else random.uniform(0.9, 1.2))
+                services.append({
+                    "tenant_id": slug, "_slug": slug, "service_type_code": sc,
+                    "price": display_price(pricing), "pricing": pricing,
+                    "estimated_duration_minutes": stypes[sc].get("estimated_duration_minutes", 60),
+                    "is_available": True, "note": "", **meta,
+                })
+
+    res = await GarageModel.collection.insert_many(garages)
+    for g, oid in zip(garages, res.inserted_ids):
+        g["_id"] = oid
+    by_slug = {g["slug"]: g for g in garages}
+    await TenantModel.collection.insert_many(tenants)
+    ures = await UserModel.collection.insert_many(owners)
+    for t_slug, uid in zip([o["tenant_id"] for o in owners], ures.inserted_ids):
+        await TenantModel.collection.update_one({"slug": t_slug}, {"$set": {"owner_user_id": str(uid)}})
+    for s in services:
+        s["garage_id"] = by_slug[s.pop("_slug")]["_id"]
+    await GarageServiceModel.collection.insert_many(services)
+    svc_map = {(s["garage_id"], s["service_type_code"]): s for s in services}
+    logger.info(f"Bãi: {len(garages)} · dịch vụ: {len(services)}")
+
+    # ── 2. Tài xế + xe ──
+    customers, vehicles = [], []
+    for i in range(1, args.customers + 1):
+        uname = f"customer_{i:02d}"
+        customers.append({
+            "tenant_id": "platform", "username": uname, "email": f"{uname}@example.com",
+            "phone": f"09{random.randint(10000000, 99999999)}", "password_hash": customer_hash,
+            "name": person_name(), "role": "customer", "is_active": True, "allowed_tenant_ids": [],
+            "customer_profile": {}, "staff_profile": {}, "last_login": None, **meta,
+        })
+    cres = await UserModel.collection.insert_many(customers)
+    plate_seq = 0
+    cust_plates = {}
+    for c, oid in zip(customers, cres.inserted_ids):
+        c["_id"] = oid
+        cust_plates[oid] = []
+        for k in range(random.choice([1, 1, 2])):
+            brand, model, body = random.choice(CARS)
+            plate_seq += 1
+            p = plate(plate_seq + random.randint(0, 3) * 1000)
+            while any(v["license_plate"] == p for v in vehicles):
+                plate_seq += 1
+                p = plate(plate_seq)
+            vehicles.append({
+                "tenant_id": "platform", "owner_user_id": str(oid), "license_plate": p, "brand": brand, "model": model,
+                "year": random.randint(2016, 2025), "color": random.choice(COLORS), "vehicle_type": "standard",
+                "body_type": body, "size_class": "large" if body in ("suv", "truck", "van") else "medium",
+                "minimum_garage_tier": 1, "vetc_linked": False, "is_default": k == 0, "is_active": True, **meta,
+            })
+            cust_plates[oid].append(p)
+    await VehicleModel.collection.insert_many(vehicles)
+    plate_vehicle = {v["license_plate"]: v for v in vehicles}
+    vres = await VehicleModel.collection.find({"created_by": SEED_TAG}, {"license_plate": 1}).to_list(length=None)
+    for v in vres:
+        plate_vehicle[v["license_plate"]]["_id"] = v["_id"]
+    logger.info(f"Tài xế: {len(customers)} · xe: {len(vehicles)}")
+
+    # ── 3. Lượt đặt ──
+    bookable = [g for g in garages if g["status"] == "active" and g["integration_level"] >= 2]
+    lot_weight = [math.sqrt(g["capacity"]["total_spots"]) * (1.5 if g["integration_level"] >= 3 else 1) for g in bookable]
+    # Mỗi tài xế có 2–4 bãi quen (tạo khách quay lại)
+    favorites = {c["_id"]: random.choices(bookable, lot_weight, k=random.randint(2, 4)) for c in customers}
+    seq = 0
+
+    def code() -> str:
+        nonlocal seq
+        seq += 1
+        return f"PH-SEED-{seq:05d}"
+
+    def svc_for(g: dict) -> str:
+        opts = [c for c in g["services_offered"] if c in ("park_hourly", "park_overnight", "park_daily")]
+        return random.choices(opts, [8 if c == "park_hourly" else 2 for c in opts])[0]
+
+    def window(code_: str, day_local: datetime):
+        if code_ == "park_overnight":
+            s = day_local.replace(hour=random.choice([18, 19, 20]), minute=0)
+            return s, s.replace(hour=7) + timedelta(days=1)
+        if code_ == "park_daily":
+            s = day_local.replace(hour=random.randint(6, 10), minute=random.choice([0, 30]))
+            return s, s + timedelta(days=random.choice([1, 1, 2, 3]))
+        s = day_local.replace(hour=random.choices(range(6, 22), [2, 6, 9, 6, 4, 4, 5, 4, 4, 4, 5, 6, 7, 6, 4, 2])[0],
+                              minute=random.choice([0, 15, 30, 45]))
+        return s, s + timedelta(minutes=random.choice([60, 90, 120, 120, 180, 240, 300, 480]))
+
+    def build(g, cust, svc, start, end, status, source="app"):
+        gsvc = svc_map[(g["_id"], svc)]
+        quote = quote_price(gsvc["pricing"], start, end)["amount"]
+        grace = start + timedelta(minutes=g["capacity"]["grace_minutes"])
+        created = start - timedelta(hours=random.uniform(0.5, 48)) if source != "walk_in" else start
+        p = random.choice(cust_plates[cust["_id"]]) if cust else plate(random.randint(1, 99999))
+        stamps = {"created_at": created}
+        if g["integration_level"] >= 3 or status not in ("pending", "rejected", "expired"):
+            stamps["reserved_at"] = created + timedelta(minutes=random.randint(0, 20) if g["integration_level"] == 2 else 0)
+        b = {
+            "tenant_id": g["tenant_id"], "booking_code": code(),
+            "customer_id": cust["_id"] if cust else None, "garage_id": g["_id"],
+            "vehicle_id": plate_vehicle.get(p, {}).get("_id") if cust else None,
+            "license_plate": p, "service_type_code": svc, "quoted_price": int(quote), "final_price": None,
+            "payment_status": "unpaid", "payment_method": "", "start_time": start, "end_time": end,
+            "grace_until": grace, "status": status, "source": source, "timestamps": stamps,
+            "matching_context": {}, "feedback": {}, "cancellation_reason": "", "cancelled_by": "",
+            "created_at": created, "updated_at": created, "created_by": SEED_TAG, "updated_by": SEED_TAG,
+        }
+        if status in ("checked_in", "checked_out"):
+            cin = max(created, start + timedelta(minutes=random.randint(-20, 25)))
+            stamps["checked_in_at"] = cin
+        if status == "checked_out":
+            cout = end + timedelta(minutes=random.randint(-40, 50))
+            cout = max(cout, stamps["checked_in_at"] + timedelta(minutes=20))
+            stamps["checked_out_at"] = cout
+            billed_from = stamps["checked_in_at"] if source == "walk_in" else max(stamps["checked_in_at"], start)
+            final = quote_price(gsvc["pricing"], billed_from, cout)["amount"]
+            if gsvc["pricing"].get("mode") == "flat":
+                final = max(final, int(quote))
+            b["final_price"] = int(final)
+            if random.random() < 0.93:
+                b.update(payment_status="paid", payment_method=random.choice(["cash", "transfer", "transfer"]))
+                stamps["paid_at"] = cout
+            if cust and random.random() < 0.4:
+                rating = random.choices([5, 4, 3, 2, 1], [50, 30, 10, 6, 4])[0]
+                b["feedback"] = {"rating": rating, "quick_feedback": "thumbs_up" if rating >= 4 else "thumbs_down",
+                                 "comment": random.choice(REVIEW_GOOD if rating >= 4 else REVIEW_BAD) if random.random() < 0.6 else "",
+                                 "complaint": rating <= 2 and random.random() < 0.5}
+        elif status == "cancelled":
+            b["cancelled_by"] = "garage" if random.random() < 0.15 else "customer"
+            b["cancellation_reason"] = "Bãi hết chỗ đột xuất" if b["cancelled_by"] == "garage" else "Đổi kế hoạch"
+            stamps["cancelled_at"] = created + (start - created) * random.random()
+        elif status == "no_show":
+            stamps["no_show_at"] = grace + timedelta(minutes=5)
+        elif status == "rejected":
+            stamps["rejected_at"] = created + timedelta(minutes=random.randint(5, 60))
+            b["cancellation_reason"] = "Bãi đã kín trong khung giờ này"
+        elif status == "expired":
+            stamps["expired_at"] = start
+        return b
+
+    bookings = []
+    target_past = args.bookings
+    for _ in range(target_past):
+        cust = random.choice(customers)
+        g = random.choice(favorites[cust["_id"]]) if random.random() < 0.6 else random.choices(bookable, lot_weight)[0]
+        svc = svc_for(g)
+        day = to_local(now - timedelta(days=random.uniform(0.3, 90)))
+        start, end = window(svc, day.replace(second=0, microsecond=0))
+        start, end = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+        if end > now - timedelta(minutes=30):
+            continue
+        if g["integration_level"] == 2 and random.random() < 0.06:
+            status = random.choice(["rejected", "expired"])
+        else:
+            status = random.choices(["checked_out", "cancelled", "no_show"], [84, 10, 6])[0]
+        bookings.append(build(g, cust, svc, start, end, status))
+
+    # Xe vãng lai (không qua app) ≈ 35% số lượt
+    for _ in range(int(target_past * 0.35)):
+        g = random.choices(bookable, lot_weight)[0]
+        day = to_local(now - timedelta(days=random.uniform(0.3, 90)))
+        start, end = window("park_hourly", day.replace(second=0, microsecond=0))
+        start, end = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+        if end > now - timedelta(minutes=30):
+            continue
+        bookings.append(build(g, None, "park_hourly", start, end, "checked_out", source="walk_in"))
+
+    # Hiện tại: xe đang trong bãi + lượt sắp tới
+    inside_count = {}
+    for g in bookable:
+        # Lượt đã xong từ sáng tới giờ (để "doanh thu hôm nay" có số liệu)
+        today_start = to_local(now).replace(hour=6, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        for _ in range(random.randint(2, 8)):
+            span = (now - timedelta(hours=1) - today_start).total_seconds()
+            if span <= 0:
+                break
+            start = today_start + timedelta(seconds=random.uniform(0, span))
+            end = min(start + timedelta(minutes=random.choice([45, 60, 90, 120, 180])), now - timedelta(minutes=10))
+            if end <= start + timedelta(minutes=20):
+                continue
+            walk = random.random() < 0.4
+            bookings.append(build(g, None if walk else random.choice(customers), "park_hourly", start, end,
+                                  "checked_out", source="walk_in" if walk else "app"))
+        for _ in range(random.randint(1, 3)):
+            cust = random.choice(customers)
+            start = now - timedelta(minutes=random.randint(20, 240))
+            bookings.append(build(g, cust, "park_hourly", start, start + timedelta(hours=random.choice([2, 3, 4, 6])), "checked_in"))
+            inside_count[g["_id"]] = inside_count.get(g["_id"], 0) + 1
+        for _ in range(random.randint(0, 2)):
+            start = now - timedelta(minutes=random.randint(10, 120))
+            bookings.append(build(g, None, "park_hourly", start, start + timedelta(hours=3), "checked_in", source="walk_in"))
+            inside_count[g["_id"]] = inside_count.get(g["_id"], 0) + 1
+    for _ in range(max(40, args.customers * 2)):
+        cust = random.choice(customers)
+        g = random.choice(favorites[cust["_id"]])
+        svc = svc_for(g)
+        start = (now + timedelta(minutes=random.randint(20, 60 * 24 * 5))).replace(second=0, microsecond=0)
+        start = start.replace(minute=(start.minute // 15) * 15)
+        _, end = window(svc, to_local(start))
+        end = end.astimezone(timezone.utc)
+        if end <= start:
+            end = start + timedelta(hours=2)
+        status = "reserved" if g["integration_level"] >= 3 or random.random() < 0.5 else "pending"
+        bookings.append(build(g, cust, svc, start, end, status))
+
+    bookings.sort(key=lambda b: b["start_time"])
+    for i in range(0, len(bookings), 2000):
+        await BookingModel.collection.insert_many(bookings[i:i + 2000])
+    logger.info(f"Lượt đặt: {len(bookings)} (trong đó vãng lai {sum(1 for b in bookings if b['source'] == 'walk_in')})")
+
+    # ── 4. Chỗ trống hiện tại + snapshot 8 tuần ──
+    tracked = [g for g in garages if g["status"] == "active" and g["integration_level"] >= 2]
+    snaps = []
+    hour_now = now.replace(minute=0, second=0, microsecond=0)
+    for g in tracked:
+        total = g["capacity"]["total_spots"]
+        bias = random.uniform(-0.12, 0.12)       # mỗi bãi đông/vắng hơn trung bình loại hình một chút
+        for h in range(args.weeks * 7 * 24, 0, -1):
+            ts = hour_now - timedelta(hours=h)
+            loc = to_local(ts)
+            rate = occupancy_profile(g["lot_type"], loc.hour, loc.weekday()) + bias + random.gauss(0, 0.06)
+            rate = max(0.0, min(1.0, rate))
+            occ = round(rate * total)
+            snaps.append({
+                "tenant_id": g["tenant_id"], "garage_id": g["_id"], "timestamp": ts,
+                "total_spots": total, "occupied": occ, "held": 0, "available": total - occ,
+                "occupancy_rate": round(occ / total, 3),
+                "source": "simulated" if g["integration_level"] >= 3 else "manual",
+                "hour_of_day": loc.hour, "day_of_week": loc.weekday(), **meta,
+            })
+        loc = to_local(now)
+        cur = occupancy_profile(g["lot_type"], loc.hour, loc.weekday()) + bias
+        occupied = max(inside_count.get(g["_id"], 0), min(total, round(max(0.0, cur) * total)))
+        updated = now if g["integration_level"] >= 3 else now - timedelta(minutes=random.randint(3, 90))
+        await GarageModel.collection.update_one({"_id": g["_id"]}, {"$set": {"occupancy": {
+            "occupied": occupied, "source": "simulated" if g["integration_level"] >= 3 else "manual", "updated_at": updated,
+        }}})
+        if len(snaps) >= 20000:
+            await CapacitySnapshotModel.collection.insert_many(snaps)
+            snaps = []
+    if snaps:
+        await CapacitySnapshotModel.collection.insert_many(snaps)
+    logger.info(f"Snapshot: {len(tracked)} bãi × {args.weeks} tuần")
+
+    # ── 5. Chỉ số vận hành + điểm chất lượng ──
+    for g in bookable:
+        await recompute_garage_stats(g["_id"])
+    logger.info("Đã tính lại chỉ số vận hành")
+
+    logger.info("──────────────────────────────────────────")
+    logger.info(f"Chủ bãi : owner_<quận>_<nn>, ví dụ {owners[0]['username']}  / {OWNER_PASSWORD}")
+    logger.info(f"Tài xế  : customer_01 … customer_{args.customers:02d}  / {CUSTOMER_PASSWORD}")
+    logger.info("Admin   : SUPER_ADMIN_USERNAME / SUPER_ADMIN_PASSWORD trong .env")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Seed du lieu mau")
-    parser.add_argument("--reset", action="store_true", help="Xoá data cũ trước khi seed")
-    args = parser.parse_args()
-    asyncio.run(main(reset=args.reset))
+    ap = argparse.ArgumentParser(description="Seed dữ liệu demo Parking HUB")
+    ap.add_argument("--reset", action="store_true", help="Xoá dữ liệu demo cũ (created_by=seed_demo) trước khi seed")
+    ap.add_argument("--lots", type=int, default=150)
+    ap.add_argument("--customers", type=int, default=40)
+    ap.add_argument("--bookings", type=int, default=2300, help="Số lượt qua app trong quá khứ (vãng lai cộng thêm ~35%)")
+    ap.add_argument("--weeks", type=int, default=8, help="Số tuần snapshot lấp đầy")
+    ap.add_argument("--seed", type=int, default=2026)
+    asyncio.run(main(ap.parse_args()))
