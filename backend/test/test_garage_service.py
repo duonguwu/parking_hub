@@ -78,7 +78,7 @@ class TestGarageServiceConfig:
             cookies=configured_garage["cookies"],
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "interior",
+                "service_type_code": "car_wash",
                 "price": 200000,
             },
         )
@@ -87,7 +87,7 @@ class TestGarageServiceConfig:
             cookies=configured_garage["cookies"],
             json={
                 "garage_id": configured_garage["garage_id"],
-                "service_type_code": "interior",
+                "service_type_code": "car_wash",
             },
         )
         assert resp.status_code == 200
@@ -98,4 +98,4 @@ class TestGarageServiceConfig:
             json={"garage_id": configured_garage["garage_id"]},
         )
         codes = {s["service_type_code"] for s in lst.json()["data"]}
-        assert "interior" not in codes
+        assert "car_wash" not in codes

@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """Garage Service Views."""
+from datetime import datetime
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 
 from app.api.garage_service.garage_service_utils import (
     list_services_for_garage, upsert_garage_service, remove_garage_service,
+    quote_garage_service,
 )
 from app.api.auth.permissions import require_permission
 from app.api.shared.common_utils import api_response
@@ -21,13 +23,24 @@ class ListByGarageInput(BaseModel):
 class UpsertInput(BaseModel):
     garage_id: str = Field(..., min_length=1)
     service_type_code: str = Field(..., min_length=1)
-    price: int = Field(..., ge=0)
-    estimated_duration_minutes: Optional[int] = Field(default=None, ge=1, le=600)
+    price: Optional[int] = Field(default=None, ge=0)
+    estimated_duration_minutes: Optional[int] = Field(default=None, ge=1, le=60 * 24 * 31)
+    pricing: Optional[Dict[str, Any]] = None
+    note: Optional[str] = Field(default=None, max_length=200)
 
 
 class RemoveInput(BaseModel):
     garage_id: str = Field(..., min_length=1)
     service_type_code: str = Field(..., min_length=1)
+
+
+@garage_service_router.get("/quote")
+async def quote(
+    garage_id: str, service_type_code: str, start_time: datetime, end_time: datetime,
+) -> Dict[str, Any]:
+    """Public — báo giá dịch vụ tại bãi cho khoảng thời gian."""
+    data = await quote_garage_service(garage_id, service_type_code, start_time, end_time)
+    return api_response(Operation.RETRIEVED, Resource.GARAGE_SERVICE, data)
 
 
 @garage_service_router.post("/list_by_garage")
@@ -45,7 +58,7 @@ async def upsert(
     data = await upsert_garage_service(
         input_data.garage_id, input_data.service_type_code,
         input_data.price, input_data.estimated_duration_minutes,
-        current_user,
+        current_user, pricing=input_data.pricing, note=input_data.note,
     )
     return api_response(Operation.UPDATED, Resource.GARAGE_SERVICE, data)
 
