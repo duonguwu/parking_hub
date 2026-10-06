@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Capacity Snapshots — Time-series tracking of garage load."""
+"""Capacity Snapshots — chuỗi thời gian lấp đầy theo giờ của từng bãi."""
 from umongo import fields
 from app.db.mongo import mongo_instance
 from app.db.base_model import TenantAwareDocument
@@ -8,17 +8,18 @@ from app.db.base_model import TenantAwareDocument
 @mongo_instance.register
 class CapacitySnapshotModel(TenantAwareDocument):
     garage_id = fields.ObjectIdField(required=True)
-    timestamp = fields.AwareDateTimeField(required=True)
+    timestamp = fields.AwareDateTimeField(required=True)   # đầu giờ (UTC)
 
-    vehicles_in_service = fields.IntegerField(default=0)
-    vehicles_waiting = fields.IntegerField(default=0)
-    available_bays = fields.IntegerField(default=0)
-    estimated_wait_minutes = fields.IntegerField(default=0)
-    staff_on_duty = fields.IntegerField(default=0)
+    total_spots = fields.IntegerField(default=0)
+    occupied = fields.IntegerField(default=0)              # xe đang trong bãi
+    held = fields.IntegerField(default=0)                  # chỗ đang giữ cho lượt đặt
+    available = fields.IntegerField(default=0)
+    occupancy_rate = fields.FloatField(default=0.0)        # (occupied + held) / total
+    source = fields.StringField(default="manual")          # manual | simulated | checkin
 
-    # Aggregated keys for baseline queries
-    hour_of_day = fields.IntegerField(default=0)          # 0-23
-    day_of_week = fields.IntegerField(default=0)          # 0=Mon, 6=Sun
+    # Khoá tổng hợp theo giờ địa phương (Asia/Ho_Chi_Minh)
+    hour_of_day = fields.IntegerField(default=0)           # 0-23
+    day_of_week = fields.IntegerField(default=0)           # 0=T2, 6=CN
 
     class Meta(TenantAwareDocument.Meta):
         abstract = False
