@@ -21,9 +21,15 @@ import { GarageQueue } from '@/pages/garage/GarageQueue'
 import { GarageAnalytics } from '@/pages/garage/GarageAnalytics'
 import { GarageServices } from '@/pages/garage/GarageServices'
 import { GarageScore } from '@/pages/garage/GarageScore'
+import { GarageProfile } from '@/pages/garage/GarageProfile'
 
 // Pages — Admin (Platform)
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
+import { AdminMap } from '@/pages/admin/AdminMap'
+import { AdminGarages } from '@/pages/admin/AdminGarages'
+import { AdminGarageDetail } from '@/pages/admin/AdminGarageDetail'
+import { AdminUsers } from '@/pages/admin/AdminUsers'
+import { AdminServices } from '@/pages/admin/AdminServices'
 
 // Auth
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -99,6 +105,7 @@ function App() {
           <Route path="analytics" element={<GarageAnalytics />} />
           <Route path="services" element={<GarageServices />} />
           <Route path="score" element={<GarageScore />} />
+          <Route path="profile" element={<GarageProfile />} />
         </Route>
 
         {/* ── Admin (Platform) Routes ── */}
@@ -108,6 +115,11 @@ function App() {
           </ProtectedRoute>
         }>
           <Route index element={<AdminDashboard />} />
+          <Route path="map" element={<AdminMap />} />
+          <Route path="garages" element={<AdminGarages />} />
+          <Route path="garages/:id" element={<AdminGarageDetail />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="services" element={<AdminServices />} />
         </Route>
 
         {/* ── Root ── */}
