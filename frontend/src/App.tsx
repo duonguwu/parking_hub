@@ -28,6 +28,11 @@ import { AdminDashboard } from '@/pages/admin/AdminDashboard'
 // Auth
 import { LoginPage } from '@/pages/auth/LoginPage'
 
+// PWA Components
+import { PWABadge } from '@/components/pwa/PWABadge'
+import { PWAInstallPrompt } from '@/components/pwa/PWAInstallPrompt'
+import { OfflineBanner } from '@/components/pwa/OfflineBanner'
+
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { user, loading } = useAuth()
   if (loading) return (
@@ -56,6 +61,7 @@ function RoleRedirect() {
 function App() {
   return (
     <BrowserRouter>
+      <OfflineBanner />
       <Routes>
         {/* ── Auth ── */}
         <Route path="/login" element={<LoginPage />} />
@@ -101,8 +107,13 @@ function App() {
         <Route path="/" element={<RoleRedirect />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* ── PWA UI Elements ── */}
+      <PWABadge />
+      <PWAInstallPrompt />
     </BrowserRouter>
   )
 }
 
 export default App
+

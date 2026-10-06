@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, Search, Zap, Loader2, Navigation, Clock, CheckCircle2, Star, Target, Crosshair } from 'lucide-react'
+import { X, Search, Zap, Loader2, Navigation, Clock, CheckCircle2, Star, Crosshair } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { matchingApi, customerApi, type Vehicle, type MatchResult, TIER_COLOR } from '@/services/api'
+import { customerApi, matchingApi, type Vehicle, type MatchResult, TIER_COLOR } from '@/services/api'
 
 interface SmartBookingModalProps {
   isOpen: boolean
@@ -24,7 +24,6 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
   const navigate = useNavigate()
   const [phase, setPhase] = useState<'input' | 'scanning' | 'results'>('input')
 
-  // Inputs
   const [locationMode, setLocationMode] = useState('current')
   const [timeMode, setTimeMode] = useState<'now' | 'custom'>('now')
   const [customDate, setCustomDate] = useState(() => new Date().toISOString().split('T')[0])
@@ -39,7 +38,6 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
   const [vehicleId, setVehicleId] = useState('')
   const [userVehicles, setUserVehicles] = useState<Vehicle[]>([])
 
-  // State
   const [matches, setMatches] = useState<MatchResult[]>([])
   const [searchId, setSearchId] = useState('')
   const [loadingMsg, setLoadingMsg] = useState('Đang tải dữ liệu...')
@@ -68,12 +66,11 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
 
   const handleSearch = async () => {
     setPhase('scanning')
-    setLoadingMsg('Đang quét vệ tinh mạng lưới cửa hàng...')
+    setLoadingMsg('Đang phân tích mạng lưới bãi đỗ xe...')
     setError('')
 
-    // Delay randomly for dramatic effect
-    setTimeout(() => setLoadingMsg('Đang đo độ kẹt xe & kiểm tra slot trống...'), 1200)
-    setTimeout(() => setLoadingMsg('Đang chấm điểm và xếp hạng lựa chọn...'), 2400)
+    setTimeout(() => setLoadingMsg('Đang kiểm tra chỗ trống & thời gian di chuyển...'), 1000)
+    setTimeout(() => setLoadingMsg('Đang chấm điểm và xếp hạng đề xuất tối ưu...'), 2000)
 
     try {
       let pos: [number, number]
@@ -106,14 +103,11 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
         top_k: 3,
       })
 
-      setTimeout(() => {
-        setSearchId(res.search_id)
-        setMatches(res.matches)
-        setPhase('results')
-      }, 3500) // minimum loading time for UX effect
-
+      setMatches(res.matches)
+      setSearchId(res.search_id)
+      setPhase('results')
     } catch (e: any) {
-      setError(e.message || 'Lỗi kết nối Intelligence Engine')
+      setError('Lỗi tìm kiếm: ' + (e.message || 'Vui lòng thử lại'))
       setPhase('input')
     }
   }
@@ -126,7 +120,7 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
         reqTime = new Date(`${customDate}T${customTime}`).toISOString()
       } else {
         const now = new Date()
-        now.setMinutes(now.getMinutes() + match.travel_minutes + 5) // eta + 5 min prep
+        now.setMinutes(now.getMinutes() + match.travel_minutes + 5)
         reqTime = now.toISOString()
       }
 
@@ -145,105 +139,135 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
       onClose()
       navigate(`/app/bookings/${res.id}`)
     } catch (e: any) {
-      alert('Không thể đặt lịch: ' + e.message)
+      alert('Không thể đặt chỗ: ' + e.message)
       setBookingLoading(null)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 fade-in">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="bg-slate-50 w-full max-w-2xl rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden border border-white flex flex-col max-h-[90vh]">
-        <button className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-200 text-slate-500 transition-colors z-20" onClick={onClose}>
-          <X className="w-6 h-6" />
-        </button>
+      {/* Modal / Drawer */}
+      <div className="bg-surface w-full max-w-xl rounded-t-3xl sm:rounded-3xl border border-outline-variant relative z-10 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh] animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
+        {/* Mobile Pull Bar */}
+        <div className="w-10 h-1 bg-outline-variant rounded-full mx-auto mt-2 sm:hidden" />
 
         {/* Header */}
-        <div className="bg-white px-8 pt-8 pb-6 border-b border-slate-100 flex items-center gap-4 shrink-0">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
-            <Crosshair className="w-6 h-6 text-white" />
+        <div className="px-5 sm:px-6 pt-3 sm:pt-5 pb-3 border-b border-outline-variant flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center">
+              <Crosshair className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-on-surface">Đặt chỗ thông minh (AI)</h2>
+              <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">Tối ưu chỗ trống & khoảng cách</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Smart Matching</h2>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Tìm Gara Tối Ưu Bằng AI</p>
-          </div>
+          <button className="p-2 rounded-full hover:bg-surface-container-low text-on-surface-variant transition-colors" onClick={onClose}>
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Content */}
-        <div className="p-8 overflow-y-auto">
+        {/* Content Body */}
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           {error && (
-            <div className="mb-6 p-4 bg-rose-50 text-rose-600 rounded-2xl text-sm font-semibold border border-rose-100">
+            <div className="mb-4 p-3 bg-error-container text-error rounded-2xl text-xs font-semibold">
               {error}
             </div>
           )}
 
           {phase === 'input' && (
-            <div className="space-y-8 slide-up">
+            <div className="space-y-4 sm:space-y-6">
               {/* Row 1: Location & Time */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3 flex flex-col">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Khu vực</label>
-                  <select value={locationMode} onChange={e => setLocationMode(e.target.value)} className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl p-4 outline-none focus:border-blue-500 font-bold appearance-none cursor-pointer">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Khu vực tìm kiếm</label>
+                  <select
+                    value={locationMode}
+                    onChange={e => setLocationMode(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant text-on-surface rounded-2xl p-3 text-xs sm:text-sm outline-none focus:border-primary font-bold cursor-pointer"
+                  >
                     {TEST_LOCATIONS.map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
                   </select>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Thời điểm sử dụng</label>
-                  <div className="flex gap-4">
-                    <button onClick={() => setTimeMode('now')} className={`flex-1 min-w-0 px-2 h-[56px] rounded-2xl border-2 flex items-center justify-center gap-2 transition-all font-bold ${timeMode === 'now' ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-200'}`}>
-                      <Zap className={`w-4 h-4 shrink-0 px-[1px] ${timeMode === 'now' ? 'text-blue-600' : 'text-slate-400'}`} /> <span className="truncate">Hiện tại</span>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Thời điểm sử dụng</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setTimeMode('now')}
+                      className={`h-11 rounded-2xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        timeMode === 'now'
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface border-outline-variant text-on-surface-variant hover:border-primary'
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5" /> <span>Đến ngay</span>
                     </button>
-                    <button onClick={() => setTimeMode('custom')} className={`flex-1 min-w-0 px-2 h-[56px] rounded-2xl border-2 flex items-center justify-center gap-2 transition-all font-bold ${timeMode === 'custom' ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-200'}`}>
-                      <Clock className={`w-4 h-4 shrink-0 px-[1px] ${timeMode === 'custom' ? 'text-blue-600' : 'text-slate-400'}`} /> <span className="truncate">Lịch hẹn</span>
+                    <button
+                      onClick={() => setTimeMode('custom')}
+                      className={`h-11 rounded-2xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        timeMode === 'custom'
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface border-outline-variant text-on-surface-variant hover:border-primary'
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5" /> <span>Đặt trước</span>
                     </button>
                   </div>
                 </div>
               </div>
 
               {timeMode === 'custom' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="space-y-3 flex flex-col">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Chọn ngày</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-200">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Chọn ngày</label>
                     <input 
                       type="date"
                       value={customDate}
                       min={new Date().toISOString().split('T')[0]}
                       onChange={e => setCustomDate(e.target.value)}
-                      className="w-full h-[56px] rounded-2xl border-2 border-slate-200 bg-white text-slate-900 px-4 outline-none font-bold shadow-sm cursor-pointer text-sm focus:border-blue-500 focus:bg-blue-50 transition-colors"
+                      className="w-full h-11 rounded-2xl border border-outline-variant bg-surface text-on-surface px-3 text-xs outline-none font-bold"
                     />
                   </div>
-                  <div className="space-y-3 flex flex-col relative group">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Chọn giờ</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Chọn giờ</label>
                     <input
                       type="time"
                       value={customTime}
                       onChange={e => setCustomTime(e.target.value)}
-                      className="w-full h-[56px] rounded-2xl border-2 border-slate-200 bg-white text-slate-900 px-4 outline-none font-bold shadow-sm cursor-pointer text-sm focus:border-blue-500 focus:bg-blue-50 transition-colors custom-time-input"
+                      className="w-full h-11 rounded-2xl border border-outline-variant bg-surface text-on-surface px-3 text-xs outline-none font-bold"
                     />
                   </div>
                 </div>
               )}
 
               {/* Row 2: Service & Vehicle */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3 flex flex-col">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Dịch vụ</label>
-                  <select value={service} onChange={e => setService(e.target.value)} className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl p-4 outline-none focus:border-blue-500 font-bold appearance-none cursor-pointer">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Loại dịch vụ</label>
+                  <select
+                    value={service}
+                    onChange={e => setService(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant text-on-surface rounded-2xl p-3 text-xs sm:text-sm outline-none focus:border-primary font-bold cursor-pointer"
+                  >
                     <option value="park_hourly">Gửi theo giờ</option>
                     <option value="park_overnight">Gửi qua đêm</option>
                     <option value="park_daily">Gửi theo ngày</option>
                     <option value="park_monthly">Gói tháng</option>
                   </select>
                 </div>
-                <div className="space-y-3 flex flex-col">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Xe của bạn</label>
-                  <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl p-4 outline-none focus:border-blue-500 font-bold appearance-none cursor-pointer relative">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Xe của bạn</label>
+                  <select
+                    value={vehicleId}
+                    onChange={e => setVehicleId(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant text-on-surface rounded-2xl p-3 text-xs sm:text-sm outline-none focus:border-primary font-bold cursor-pointer"
+                  >
                     {userVehicles.length === 0 ? <option value="">Chưa có xe nào</option> : null}
                     {userVehicles.map(v => (
                       <option key={v.id} value={v.id}>{v.license_plate} - {v.brand} {v.model}</option>
@@ -255,65 +279,70 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
               <button
                 onClick={handleSearch}
                 disabled={!vehicleId}
-                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-black tracking-wide py-5 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 transition-transform active:scale-[0.98] disabled:opacity-50"
+                className="w-full mt-2 bg-primary hover:opacity-90 text-white font-bold py-3.5 rounded-full flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 text-sm"
               >
-                <Search className="w-5 h-5" /> TÌM GARA TỐI ƯU
+                <Search className="w-4 h-4" /> TÌM BÃI ĐỖ TỐI ƯU
               </button>
             </div>
           )}
 
           {phase === 'scanning' && (
-            <div className="flex flex-col items-center justify-center py-20 animate-in fade-in zoom-in duration-500">
-              <div className="relative w-24 h-24 mb-8">
-                <div className="absolute inset-0 border-4 border-blue-100 rounded-full" />
-                <div className="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin" />
-                <Target className="absolute inset-0 m-auto text-blue-500 w-8 h-8 animate-pulse" />
+            <div className="flex flex-col items-center justify-center py-12 animate-in fade-in duration-300 text-center">
+              <div className="relative w-16 h-16 mb-4">
+                <div className="absolute inset-0 border-4 border-primary/20 rounded-full" />
+                <div className="absolute inset-0 border-4 border-primary rounded-full border-t-transparent animate-spin" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 tracking-tight transition-all duration-300">
+              <h3 className="text-base font-bold text-on-surface">
                 {loadingMsg}
               </h3>
-              <p className="text-slate-500 text-sm font-medium mt-2">Dựa trên toạ độ hiện tại của bạn</p>
+              <p className="text-on-surface-variant text-xs mt-1">Hệ thống đang đối chiếu thuật toán Matching Engine...</p>
             </div>
           )}
 
           {phase === 'results' && (
-            <div className="space-y-6 slide-up">
+            <div className="space-y-3">
               {matches.map((m, i) => (
-                <Card key={m.garage_id} className={`p-6 rounded-3xl border-2 transition-all ${i === 0 ? 'bg-blue-50/30 border-blue-400 shadow-lg shadow-blue-500/10' : 'bg-white border-slate-200 hover:border-blue-200'}`}>
-                  <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
+                <Card key={m.garage_id} className={`p-4 rounded-2xl border transition-all ${i === 0 ? 'bg-primary-container/10 border-primary' : 'bg-surface border-outline-variant'}`}>
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        {i === 0 && <span className="bg-blue-600 text-white text-[10px] font-black tracking-widest uppercase px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm"><Star className="w-3 h-3 fill-white" /> Top 1</span>}
-                        <h4 className="text-xl font-black text-slate-900 tracking-tight">{m.name}</h4>
+                      <div className="flex items-center gap-2 mb-1">
+                        {i === 0 && (
+                          <span className="bg-primary text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded flex items-center gap-1">
+                            <Star className="w-3 h-3 fill-white" /> Top 1
+                          </span>
+                        )}
+                        <h4 className="text-sm font-bold text-on-surface">{m.name}</h4>
                       </div>
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-4">
-                        <span className={`px-2 py-0.5 rounded-md uppercase ${TIER_COLOR[m.tier] ?? 'bg-slate-100 text-slate-600'}`}>{m.tier}</span>
+                      <div className="flex items-center gap-2 text-[11px] font-semibold text-on-surface-variant mb-2">
+                        <span className={`px-1.5 py-0.5 rounded uppercase ${TIER_COLOR[m.tier] ?? 'bg-surface-container'}`}>{m.tier}</span>
                         <span>•</span>
-                        <span className="flex items-center gap-1 text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md"><Navigation className="w-3.5 h-3.5" /> {m.travel_distance_km.toFixed(1)} km ({m.travel_minutes}p)</span>
+                        <span className="flex items-center gap-1"><Navigation className="w-3 h-3 text-outline" /> {m.travel_distance_km.toFixed(1)} km ({m.travel_minutes} phút)</span>
                       </div>
                       
-                      <div className="space-y-1.5">
+                      <div className="space-y-1">
                         {m.reasons.map((r, ri) => (
-                          <div key={ri} className="flex items-start gap-2 text-sm text-slate-600 font-medium">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <div key={ri} className="flex items-start gap-1.5 text-xs text-on-surface-variant">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
                             <span>{r.text}</span>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end shrink-0 sm:border-l border-slate-200 sm:pl-6">
-                      <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-1">Điểm phù hợp</p>
-                      <p className={`text-4xl font-black tracking-tight mb-4 ${i === 0 ? 'bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600' : 'text-slate-900'}`}>
-                        {Math.round(m.total_score)}
-                      </p>
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between pt-2 sm:pt-0 border-t sm:border-t-0 border-outline-variant/50">
+                      <div className="sm:text-right mb-0 sm:mb-2">
+                        <span className="text-[10px] font-bold text-on-surface-variant uppercase">Điểm phù hợp</span>
+                        <p className="text-xl font-black text-primary leading-tight">
+                          {Math.round(m.total_score)}
+                        </p>
+                      </div>
                       
                       <button 
                         onClick={() => handleBook(m)}
                         disabled={!!bookingLoading}
-                        className={`w-full py-3 px-6 rounded-xl font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2 ${i === 0 ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md' : 'bg-slate-900 hover:bg-slate-800 text-white'}`}
+                        className="py-2.5 px-5 rounded-full font-bold text-xs bg-primary hover:opacity-90 text-white transition-opacity flex items-center justify-center gap-1.5 shrink-0"
                       >
-                        {bookingLoading === m.garage_id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'ĐẶT LỊCH NGAY'}
+                        {bookingLoading === m.garage_id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Giữ chỗ ngay'}
                       </button>
                     </div>
                   </div>
@@ -321,7 +350,6 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
               ))}
             </div>
           )}
-
         </div>
       </div>
     </div>

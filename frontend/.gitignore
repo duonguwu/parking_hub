@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Stitch UI Reference
+stitch_*
+stitch_parking_hub_mobility_web_app/
+
+# Generated development and test artifacts
+dev-dist/
+coverage/
+playwright-report/
+test-results/
+test-artifacts/*
+!test-artifacts/.gitkeep

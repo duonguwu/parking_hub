@@ -2,5 +2,6 @@
 export const APP_NAME = 'Parking HUB'
 export const APP_TAGLINE = 'Mạng lưới bãi đỗ xe thông minh'
 
-// Địa chỉ backend. Đặt VITE_API_BASE trong file .env của frontend để override.
-export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+// Địa chỉ backend. Mặc định dùng relative path ('') để Vite proxy tự động chuyển tiếp tới backend, giúp chạy mượt qua Cloudflare Tunnel/LAN mà không bị lỗi CORS/Mixed Content.
+export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+

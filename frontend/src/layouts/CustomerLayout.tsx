@@ -7,10 +7,10 @@ import { useAuth } from '@/services/auth-context'
 import { useState } from 'react'
 
 const navItems = [
-  { to: '/app', icon: Search, label: 'Discover' },
-  { to: '/app/map', icon: MapPin, label: 'Map View' },
-  { to: '/app/bookings', icon: Calendar, label: 'My Bookings' },
-  { to: '/app/vehicles', icon: CarFront, label: 'My Vehicles' },
+  { to: '/app', icon: Search, label: 'Tìm bãi' },
+  { to: '/app/map', icon: MapPin, label: 'Bản đồ' },
+  { to: '/app/bookings', icon: Calendar, label: 'Lịch hẹn' },
+  { to: '/app/vehicles', icon: CarFront, label: 'Xe của tôi' },
 ]
 
 export function CustomerLayout() {
@@ -24,18 +24,20 @@ export function CustomerLayout() {
     navigate('/login')
   }
 
+  const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : 'U'
+
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC] relative selection:bg-blue-100">
-      {/* ── Left Sidebar (Desktop Web) ── */}
-      <aside className="fixed left-0 top-0 h-screen w-[280px] flex flex-col pt-10 pb-8 z-40 bg-white border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+    <div className="flex min-h-screen bg-background relative selection:bg-blue-100">
+      {/* ── Left Sidebar (Desktop Web: md và lớn hơn) ── */}
+      <aside className="hidden md:flex fixed left-0 top-0 h-screen w-[280px] flex-col pt-8 pb-6 z-40 bg-surface border-r border-outline-variant">
         {/* Branding */}
-        <div className="px-8 mb-12 flex flex-col items-start gap-2">
+        <div className="px-8 mb-8 flex flex-col items-start gap-1">
           <Brand className="text-2xl" />
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{APP_TAGLINE}</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">{APP_TAGLINE}</p>
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 space-y-2 px-4">
+        <nav className="flex-1 space-y-1.5 px-4">
           {navItems.map((item) => {
             const isActive = location.pathname === item.to || (item.to !== '/app' && location.pathname.startsWith(item.to))
 
@@ -44,81 +46,92 @@ export function CustomerLayout() {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  'px-4 py-3.5 flex items-center gap-4 rounded-2xl transition-all duration-300 font-medium group relative overflow-hidden',
+                  'px-4 py-3 flex items-center gap-3.5 rounded-full transition-all font-medium',
                   isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
+                    ? 'bg-primary text-white font-semibold'
+                    : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
                 )}
               >
-                <item.icon className={cn('w-[22px] h-[22px]', isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-500')} />
-                <span className="text-[14px]">{item.label}</span>
+                <item.icon className={cn('w-5 h-5 shrink-0', isActive ? 'text-white' : 'text-outline')} />
+                <span className="text-sm">{item.label}</span>
               </Link>
             )
           })}
         </nav>
 
         {/* Bottom Actions */}
-        <div className="px-6 mt-auto space-y-6">
-          <Link to="/app/bookings" className="block">
-            <button className="w-full bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white py-4 px-6 rounded-2xl text-[13px] font-bold tracking-wide transition-all duration-300 flex items-center justify-center gap-2 shadow-sm border border-blue-100">
-              <Plus className="w-5 h-5" />
-              NEW BOOKING
+        <div className="px-6 mt-auto space-y-4">
+          <Link to="/app/map" className="block">
+            <button className="w-full bg-primary-container text-on-primary-container hover:opacity-90 py-3 px-4 rounded-full text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 border border-primary/20">
+              <Plus className="w-4 h-4" />
+              ĐẶT CHỖ MỚI
             </button>
           </Link>
-          <div className="space-y-1 pt-6 px-2 border-t border-slate-100">
-            <Link to="#" className="flex items-center gap-3 text-slate-500 hover:text-slate-900 transition-colors py-2 px-2 rounded-lg">
-              <Settings className="w-5 h-5 text-slate-400" />
-              <span className="text-[14px] font-medium">Settings</span>
+          <div className="space-y-1 pt-4 px-2 border-t border-outline-variant">
+            <Link to="#" className="flex items-center gap-3 text-on-surface-variant hover:text-on-surface transition-colors py-2 px-2 rounded-lg text-xs font-medium">
+              <Settings className="w-4 h-4 text-outline" />
+              <span>Cài đặt</span>
             </Link>
-            <Link to="#" className="flex items-center gap-3 text-slate-500 hover:text-slate-900 transition-colors py-2 px-2 rounded-lg">
-              <HelpCircle className="w-5 h-5 text-slate-400" />
-              <span className="text-[14px] font-medium">Support</span>
+            <Link to="#" className="flex items-center gap-3 text-on-surface-variant hover:text-on-surface transition-colors py-2 px-2 rounded-lg text-xs font-medium">
+              <HelpCircle className="w-4 h-4 text-outline" />
+              <span>Hỗ trợ</span>
             </Link>
           </div>
         </div>
       </aside>
 
       {/* ── Main Content Area ── */}
-      <main className="ml-[280px] flex-1 relative min-h-screen flex flex-col">
+      <main className="ml-0 md:ml-[280px] flex-1 relative min-h-screen flex flex-col pb-20 md:pb-0">
         {/* ── Global Top Header ── */}
-        <header className="h-[88px] bg-white/80 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-30 px-10 flex items-center justify-between shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+        <header className="h-16 md:h-[76px] bg-surface/90 backdrop-blur-md border-b border-outline-variant sticky top-0 z-30 px-4 md:px-8 flex items-center justify-between">
+          {/* Logo on Mobile */}
+          <div className="flex md:hidden items-center gap-2">
+            <Brand className="text-lg" />
+          </div>
 
-          <div className="flex-1 max-w-xl relative">
-            <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+          {/* Search Bar (Desktop & Tablet) */}
+          <div className="hidden sm:flex flex-1 max-w-md relative mx-4">
+            <Search className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search locations, bookings, or vehicles..."
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-full pl-12 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow"
+              placeholder="Tìm bãi đỗ xe, vị trí, biển số..."
+              className="w-full bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-primary transition-colors placeholder:text-outline"
             />
           </div>
 
-          <div className="flex items-center gap-6 ml-8">
-            <button className="relative p-2.5 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
-              <Bell className="w-6 h-6" />
-              <div className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+          {/* Header Right Actions */}
+          <div className="flex items-center gap-3 md:gap-4 ml-auto">
+            <button className="relative p-2 text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors" title="Thông báo">
+              <Bell className="w-5 h-5" />
+              <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
             </button>
-            <div className="h-8 w-[1px] bg-slate-200" />
+
+            <div className="h-6 w-px bg-outline-variant" />
+
             <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="flex items-center gap-3 hover:bg-slate-50 p-1.5 pr-3 rounded-full transition-colors border border-transparent hover:border-slate-200"
+                className="flex items-center gap-2 hover:bg-surface-container-low p-1 pr-2.5 rounded-full transition-colors border border-outline-variant"
               >
-                <img
-                  src={`https://api.dicebear.com/7.x/notionists/svg?seed=${user?.username ?? 'user'}`}
-                  alt={user?.name ?? 'User'}
-                  className="w-10 h-10 rounded-full border border-slate-200 bg-white object-cover"
-                />
-                <div className="text-left hidden sm:block">
-                  <p className="text-[13px] font-bold text-slate-900 leading-tight">{user?.name ?? '—'}</p>
-                  <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{user?.role ?? ''}</p>
+                <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-xs">
+                  {userInitial}
                 </div>
-                <ChevronDown className="w-4 h-4 text-slate-400 ml-1 hidden sm:block" />
+                <div className="text-left hidden sm:block">
+                  <p className="text-xs font-bold text-on-surface leading-tight">{user?.name ?? 'Khách'}</p>
+                  <p className="text-[10px] font-medium text-on-surface-variant uppercase">{user?.role ?? ''}</p>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-outline hidden sm:block" />
               </button>
+
               {showMenu && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
+                <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-outline-variant rounded-2xl z-50 overflow-hidden shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-4 py-3 border-b border-outline-variant sm:hidden">
+                    <p className="text-xs font-bold text-on-surface">{user?.name ?? 'Khách'}</p>
+                    <p className="text-[10px] text-on-surface-variant uppercase">{user?.role ?? ''}</p>
+                  </div>
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-5 py-3.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-error hover:bg-error-container/30 transition-colors"
                   >
                     <LogOut className="w-4 h-4" /> Đăng xuất
                   </button>
@@ -128,10 +141,40 @@ export function CustomerLayout() {
           </div>
         </header>
 
-        <div className={cn("flex-1 flex flex-col", location.pathname === '/app/map' ? 'p-0' : 'p-6 md:p-10')}>
+        {/* Dynamic Page Outlet */}
+        <div className={cn("flex-1 flex flex-col", location.pathname === '/app/map' ? 'p-0' : 'p-4 sm:p-6 md:p-8')}>
           <Outlet />
         </div>
       </main>
+
+      {/* ── Mobile Bottom Navigation Bar (Dưới 768px) ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-outline-variant flex justify-around items-center px-1 py-2">
+        {navItems.map((item) => {
+          const isActive = location.pathname === item.to || (item.to !== '/app' && location.pathname.startsWith(item.to))
+
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={cn(
+                'flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all',
+                isActive
+                  ? 'text-primary font-bold'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              )}
+            >
+              <div className={cn(
+                'p-1 rounded-full transition-colors',
+                isActive ? 'bg-primary-container text-on-primary-container' : ''
+              )}>
+                <item.icon className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] mt-0.5">{item.label}</span>
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   )
 }
+
