@@ -22,9 +22,13 @@ Tài xế tự đăng ký tài khoản ngay ở trang đăng nhập.
 
 | Vai trò | Tên đăng nhập | Mật khẩu |
 |---|---|---|
-| Tài xế | `customer_01` tới `customer_40` | `Customer@2026` |
-| Chủ bãi | `owner_q1_01`, `owner_q3_01`, `owner_bt_01`… (dạng `owner_<quận>_<số>`) | `Owner@2026` |
-| Quản trị viên | Do người vận hành hệ thống cấp | |
+| Tài xế | `minh.12`, `duong.12`, `driver` | `test123@` |
+| Chủ bãi | `vin.q1`, `vin.landmark`, `vin.q3`, `owner`, `manager`, `staff` | `test123@` |
+| Quản trị viên | `admin`, `ops` (quản trị viên có thể chuyển sang giao diện tài xế và chủ bãi) | `test123@` |
+| Tài xế (dữ liệu sinh tự động) | `customer_01` tới `customer_40` | `Customer@2026` |
+| Chủ bãi (dữ liệu sinh tự động) | `owner_<quận>_<số>`, ví dụ `owner_q1_01` | `Owner@2026` |
+
+Danh sách đầy đủ ở [TEST_ACCOUNTS.md](TEST_ACCOUNTS.md).
 
 Dữ liệu demo gồm khoảng 262 bãi đỗ ở 18 quận TP.HCM. Tên bãi, giá, lượt đặt và đánh giá đều là dữ liệu giả.
 
