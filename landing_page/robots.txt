@@ -1,0 +1,7 @@
+# robots.txt — https://parkinghub.asia
+# Cho phép mọi công cụ tìm kiếm và AI crawler truy cập toàn bộ site.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://parkinghub.asia/sitemap.xml

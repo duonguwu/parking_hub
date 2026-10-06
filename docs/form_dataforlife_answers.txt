@@ -1,0 +1,74 @@
+Trở lại với câu bắt bẻ cực kỳ hay của bạn: "Còn 9 chỗ thì chốt luôn đi, cần gì phải dự báo hay tính toán?".
+
+Đây chính là câu hỏi "ăn tiền" nhất mà các giám khảo (hoặc nhà đầu tư) sẽ vặn vẹo. Nếu bạn trả lời được câu này, họ sẽ thấy mô hình Parking HUB không phải là một cái app "vẽ vời" cho vui, mà là một hệ thống thấu hiểu Nỗi đau vận hành của chủ bãi (Operations).
+
+Để phản biện câu này, bạn hãy bám sát vào Bản chất của hàng hoá đỗ xe trong tài liệu 03 (Mục A3 & A4). Bạn có thể tự tin đáp lại như sau:
+
+1. Bãi đỗ xe không giống như rạp chiếu phim. Ghế rạp phim bán xong, dù bạn đến trễ thì ghế vẫn bỏ trống, chủ rạp đã thu đủ tiền. Còn bãi đỗ xe là một dòng chảy liên tục (chỗ đỗ = không gian x thời gian). Trong 23 phút bạn đang chạy xe trên đường, sẽ có hàng chục chiếc xe vãng lai (không dùng app) chạy ngang qua bãi và muốn tấp vào gửi.
+
+2. Giam 1 chỗ trong 23 phút là cướp doanh thu của chủ bãi. Nếu app cho phép bạn "chốt" 1 trong 9 chỗ trống đó NGAY LẬP TỨC, đồng nghĩa với việc bảo vệ bãi phải lấy cọc tiêu chặn 1 chỗ lại. Trong 23 phút bạn chưa tới, nhỡ có 3 chiếc xe vãng lai muốn vào thì bảo vệ phải xua tay đuổi đi (từ chối khách có sẵn trước mặt để chờ 1 người trên mạng chưa biết có "bom hàng" hay không). Chủ bãi cực kỳ ghét điều này, và họ sẽ tắt app!
+
+3. Tại sao AI phải tính toán? Hệ thống không tính toán để làm màu, hệ thống tính toán để ra quyết định có cho phép bạn "chốt" hay không.
+
+Nếu thuật toán dự báo: "Từ đây đến lúc ông Khoa tới (23 phút), sẽ có thêm 3 xe khác RỜI ĐI", nó sẽ mạnh dạn chốt suất cho bạn. Chủ bãi vui vì vừa có khách vãng lai, vừa chắc kèo có thêm bạn.
+Nhưng nếu thuật toán đọc dữ liệu lịch sử và biết: "Giờ cao điểm này, 10 phút nữa dòng xe vãng lai sẽ lấp sạch 9 chỗ" -> Hệ thống sẽ TỪ CHỐI lệnh giữ chỗ của bạn ngay từ lúc bạn tìm kiếm, và lập tức điều phối bạn sang một bãi dự phòng cách đó 400m (nơi có tỷ lệ trống ổn định hơn).
+Kết luận chốt hạ: AI không dự báo để khè người dùng. AI dự báo để bảo vệ dòng doanh thu của chủ bãi (không bắt họ phải giữ chỗ một cách mù quáng) đồng thời đảm bảo lời hứa 100% có chỗ cho tài xế. Thiếu bước dự báo này, mọi ứng dụng đỗ xe trước đây đều thất bại vì chủ bãi không hợp tác!
+
+
+
+
+
+
+DATA FOR LIFE MÙA 4 NĂM 2026 - NỘI DUNG ĐIỀN FORM
+Dự án: Parking HUB
+
+
+==============================================================================
+1. CÔNG NGHỆ DỰ KIẾN SỬ DỤNG
+==============================================================================
+
+AI và thị giác máy tính: YOLOv8, PyTorch, OpenCV. Bốn model chạy trên luồng camera IP của
+bãi đỗ: đếm chỗ trống, phát hiện vùng biển số, đọc ký tự biển số (biển một dòng và hai dòng
+của Việt Nam), phát hiện khói và lửa sớm. Xử lý luồng video bằng ffmpeg qua RTSP hoặc ONVIF.
+
+Học máy trên dữ liệu vận hành: mô hình chuỗi thời gian dự báo chỗ trống theo giờ và theo ngày
+trong tuần. Mô hình xếp hạng có cá nhân hoá theo thói quen người dùng.
+
+Backend: Python 3.12, FastAPI, MongoDB, Redis (cache và khoá phân tán), WebSocket cho cảnh báo
+thời gian thực. Xác thực JWT trong cookie HttpOnly, phân quyền theo vai trò, kiến trúc đa chủ
+thể tách biệt dữ liệu từng chủ bãi.
+
+Frontend: React 18, TypeScript, Vite, Tailwind CSS, Leaflet cho bản đồ.
+
+Mobile: Progressive Web App, một bộ mã nguồn dùng cho cả web và mobile, cài trực tiếp trên iOS
+và Android từ trình duyệt, service worker cho chế độ ngoại tuyến, Web Push cho cảnh báo.
+
+Bản đồ và dữ liệu ngoài: OpenStreetMap, OSRM cho thời gian di chuyển thực tế, Nominatim cho
+tìm địa chỉ, Open-Meteo cho thời tiết.
+
+Hạ tầng: Docker, Docker Compose, Nginx, CI CD bằng GitHub Actions.
+
+Bảo vệ dữ liệu: tối thiểu hoá dữ liệu thu thập, thời hạn lưu trữ và tự động xoá, nhật ký truy
+cập để kiểm toán, chia sẻ dữ liệu ở dạng tổng hợp phi định danh. Tuân thủ Luật Dữ liệu 2024 và
+Luật Bảo vệ dữ liệu cá nhân 2025.
+
+
+==============================================================================
+2. KINH NGHIỆM LÀM VIỆC VỚI LĨNH VỰC ĐÃ CHỌN
+==============================================================================
+
+Đội ngũ có nền tảng mạnh về AI và phát triển phần mềm, gồm 02 AI Engineer chuyên xây dựng và triển khai các bài toán AI cho doanh nghiệp, các Software Engineer có kinh nghiệm phát triển hệ thống SaaS và ứng dụng web, cùng 01 Thạc sĩ Khoa học Máy tính chuyên sâu về các bài toán AI và Machine Learning.
+
+Thế mạnh của đội nằm ở khả năng đưa mô hình AI ra khỏi môi trường nghiên cứu để tích hợp vào sản phẩm thực tế, từ Computer Vision, xử lý dữ liệu, backend API, hệ thống realtime đến giao diện người dùng và triển khai phần mềm.
+
+Nhờ kết hợp chuyên môn AI với năng lực software engineering, đội có khả năng phát triển đồng thời cả AI core lẫn sản phẩm hoàn chỉnh bao quanh AI, thay vì chỉ dừng ở mô hình thử nghiệm.
+
+==============================================================================
+3. KHẢ NĂNG PHÁT TRIỂN GIẢI PHÁP TRONG THỜI GIAN NGẮN
+==============================================================================
+
+Đội phát triển phần mềm theo mô hình AI-native engineering, sử dụng AI coding agents xuyên suốt vòng đời phát triển: phân tích yêu cầu, thiết kế kiến trúc, sinh và refactor code, viết test, debug, tạo tài liệu kỹ thuật và hỗ trợ triển khai. Cách làm này giúp đội rút ngắn đáng kể chu kỳ từ ý tưởng tới một prototype SaaS có thể chạy và trình diễn end-to-end.
+
+Đội có kinh nghiệm xây dựng các hệ thống gồm computer vision, backend realtime, kiến trúc multi-tenant, phân quyền nhiều vai trò, bản đồ, recommendation/matching engine và giao diện web/mobile. Các thành phần được phát triển theo hướng module hoá và container hoá, cho phép tái sử dụng, tích hợp và thay đổi nhanh trong thời gian hackathon.
+
+Trong cuộc thi, đội ưu tiên tốc độ thử nghiệm: nhanh chóng dựng luồng sản phẩm hoàn chỉnh, đưa model AI vào hệ thống, kết nối dữ liệu, tạo giao diện demo và triển khai phiên bản có thể pitching trực tiếp. Với các chức năng cần dữ liệu thực tế dài hạn, đội sẽ xây dựng prototype hoặc baseline đủ để kiểm chứng hướng tiếp cận thay vì giả định một hệ thống production đã hoàn thiện.
