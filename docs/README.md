@@ -27,7 +27,7 @@ Ba phần cần làm mới là triển khai suy luận trên thiết bị biên 
 | Hiểu nhanh dự án | Trang README này |
 | Chốt định vị và sản phẩm | [01. Tổng quan dự án](01_strategy-product/01_Project_Overview.md), sau đó chỉ tra [02](01_strategy-product/02_Problem_Deep_Dive.md) hoặc [03](01_strategy-product/03_Product_Features.md) khi cần |
 | Chuẩn bị hồ sơ cuộc thi | [07. Bản đề xuất Data for Life](03_submission/07_Proposal_DataForLife.md) và [99. Nguồn, giả định](99_reference/99_Sources_and_Assumptions.md) |
-| Làm mô hình kinh doanh | [04. Mô hình kinh doanh](02_business-operations/04_Business_Model.md) |
+| Làm mô hình kinh doanh | [04. Mô hình kinh doanh](02_business-operations/04_Business_Model.md) và [10. Mô hình bãi xe cho Biz](02_business-operations/10_Mo_Hinh_Bai_Xe_Cho_Biz.md) |
 | Triển khai một bãi | [05. Playbook onboard](02_business-operations/05_Onboarding_Playbook.md) và [06. Phạm vi, lộ trình](02_business-operations/06_Scope_and_Roadmap.md) |
 | Bắt đầu phát triển mã nguồn | [08. Hướng dẫn mã nguồn](04_technical/08_Codebase_Guide.md) và [09. Thiết kế giao diện](04_technical/09_Frontend_Design_System.md) |
 
@@ -51,4 +51,4 @@ docs/
 4. Đo lại độ chính xác của bốn model thị giác máy tính.
 5. Hoàn thiện hồ sơ 07 dựa trên kết quả kiểm chứng.
 
-Tài liệu 10 tới 12 về kiến trúc hệ thống, model thị giác máy tính và chiến lược dữ liệu chưa viết. Chỉ tạo khi bước triển khai thực sự cần, không tạo trước để lấp danh mục.
+Tài liệu 11 tới 13 về kiến trúc hệ thống, model thị giác máy tính và chiến lược dữ liệu chưa viết. Chỉ tạo khi bước triển khai thực sự cần, không tạo trước để lấp danh mục.

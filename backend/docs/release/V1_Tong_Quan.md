@@ -2,7 +2,7 @@
 
 Cập nhật: 06/10/2026. Đọc khoảng 5 phút là nắm được hệ thống đang ở đâu.
 
-Trạng thái: ứng dụng đã dùng được cho cả 3 vai trò (API đã test, giao diện chưa test trên trình duyệt thật). Hướng dẫn tính năng: [huong_dan_tinh_nang.md](../huong_dan_tinh_nang.md). Kế hoạch tiếp theo: [Ke_Hoach_Tiep_Theo.md](../plan/Ke_Hoach_Tiep_Theo.md).
+Trạng thái: ứng dụng đã dùng được cho cả 3 vai trò (API đã test, giao diện chưa test trên trình duyệt thật). Hướng dẫn tính năng: [huong_dan_tinh_nang.md](../huong_dan_tinh_nang.md). Kế hoạch tiếp theo: [Ke_Hoach_Tiep_Theo.md](../plan/02_matching/02_Ke_Hoach_Tiep_Theo.md).
 
 Parking HUB là nền tảng kết nối tài xế với mạng lưới bãi đỗ xe tại TP.HCM. Bản V1 phục vụ demo cuộc thi: dữ liệu là dữ liệu giả, không có AI, thời tiết hay giao thông.
 

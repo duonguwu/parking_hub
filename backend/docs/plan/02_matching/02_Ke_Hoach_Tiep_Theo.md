@@ -1,6 +1,6 @@
 # Kế hoạch tiếp theo sau V1
 
-Tình trạng: V1 đã dùng được (đủ luồng tài xế, chủ bãi, admin, test API đều qua; giao diện chưa kiểm thử trên trình duyệt thật). Xem [V1_Tong_Quan.md](../release/V1_Tong_Quan.md).
+Tình trạng: V1 đã dùng được (đủ luồng tài xế, chủ bãi, admin, test API đều qua; giao diện chưa kiểm thử trên trình duyệt thật). Xem [V1_Tong_Quan.md](../../release/V1_Tong_Quan.md).
 
 Tài liệu này chỉ nêu hướng, chưa đi sâu. Mức ưu tiên: P1 làm trước, P2 tiếp theo, P3 khi rảnh.
 
@@ -13,7 +13,7 @@ Tài liệu này chỉ nêu hướng, chưa đi sâu. Mức ưu tiên: P1 làm t
 
 ### 2. Matching có giao thông, ngập, thời tiết (P1)
 - Hướng: bổ sung dữ liệu giao thông, ngập lụt, thời tiết theo tuyến đường, camera giao thông TP.HCM (Hưng đã làm POC) là giai đoạn sau.
-- Chi tiết và câu hỏi nghiên cứu: [Matching_Route_Intelligence_Plan.md](02_matching/Matching_Route_Intelligence_Plan.md).
+- Chi tiết và câu hỏi nghiên cứu: [Matching_Route_Intelligence_Plan.md](Matching_Route_Intelligence_Plan.md).
 
 ### 3. Thông báo, thiên về trải nghiệm (P2)
 Người dùng là người đang ngồi xe ngoài đường, sợ nắng, mưa, kẹt xe, thành phố đông. Ý tưởng:

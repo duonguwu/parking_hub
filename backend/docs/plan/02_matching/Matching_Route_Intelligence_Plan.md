@@ -1,6 +1,6 @@
 # Kế hoạch nghiên cứu: Matching có dữ liệu giao thông, ngập, thời tiết
 
-Đây là tài liệu để nghiên cứu thêm, chưa chốt kỹ thuật. Dựa trên 2 file nháp của AI Agent ([draf_system.md](draf_system.md), [matching_new_data.md](matching_new_data.md)) và đối chiếu với code hiện tại.
+Đây là tài liệu để nghiên cứu thêm, chưa chốt kỹ thuật. Dựa trên 2 file nháp của AI Agent ([draf_system.md](archive/draf_system.md), [matching_new_data.md](archive/matching_new_data.md)) và đối chiếu với code hiện tại.
 
 ## 1. Mục tiêu
 
