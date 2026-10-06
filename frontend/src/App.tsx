@@ -50,9 +50,10 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 }
 
 const GARAGE_ROLES = ['garage_owner', 'garage_manager', 'garage_staff']
+const CUSTOMER_ROLES = ['customer', 'fleet_manager']
 
 function homeForRole(role: string): string {
-  if (role === 'customer') return '/app'
+  if (CUSTOMER_ROLES.includes(role)) return '/app'
   if (GARAGE_ROLES.includes(role)) return '/garage'
   return '/admin'
 }
@@ -74,7 +75,7 @@ function App() {
 
         {/* ── Customer Routes ── */}
         <Route path="/app" element={
-          <ProtectedRoute allowedRoles={['customer']}>
+          <ProtectedRoute allowedRoles={CUSTOMER_ROLES}>
             <CustomerLayout />
           </ProtectedRoute>
         }>
