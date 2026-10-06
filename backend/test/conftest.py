@@ -17,7 +17,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Force test database BEFORE any app import
 os.environ["MONGO_DB"] = "parkinghub_test"
-os.environ["MONGO_URI"] = "mongodb://admin:password123@localhost:27017/parkinghub_test?authSource=admin"
+os.environ["MONGO_URI"] = os.environ.get(
+    "TEST_MONGO_URI",
+    "mongodb://admin:password123@localhost:27017/parkinghub_test?authSource=admin",
+)
+if os.environ.get("TEST_REDIS_URL"):
+    os.environ["REDIS_URL"] = os.environ["TEST_REDIS_URL"]
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-2026"
 os.environ["SUPER_ADMIN_USERNAME"] = "superadmin"
 os.environ["SUPER_ADMIN_PASSWORD"] = "TestAdmin@2026"
