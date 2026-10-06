@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, Search, Zap, Loader2, Navigation, Clock, CheckCircle2, Star, Crosshair } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { customerApi, matchingApi, type Vehicle, type MatchResult, TIER_COLOR } from '@/services/api'
+import { Stars } from '@/components/parking/ParkingBits'
+import { customerApi, matchingApi, catalogApi, type Vehicle, type MatchResult, type ServiceType } from '@/services/api'
 
 interface SmartBookingModalProps {
   isOpen: boolean
@@ -13,7 +14,7 @@ interface SmartBookingModalProps {
 const DEFAULT_COORDS = { lat: 10.7761, lng: 106.7011 }
 
 const TEST_LOCATIONS = [
-  { id: 'current', name: '📍 Vị trí hiện tại' },
+  { id: 'current', name: 'Vị trí hiện tại' },
   { id: 'q1', name: 'Quận 1, TP.HCM', lat: 10.7761, lng: 106.7011 },
   { id: 'q7', name: 'Quận 7, TP.HCM', lat: 10.7325, lng: 106.7155 },
   { id: 'binh_thanh', name: 'Bình Thạnh, TP.HCM', lat: 10.8061, lng: 106.7130 },
@@ -37,6 +38,11 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
   const [service, setService] = useState(defaultService)
   const [vehicleId, setVehicleId] = useState('')
   const [userVehicles, setUserVehicles] = useState<Vehicle[]>([])
+  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
+
+  useEffect(() => {
+    catalogApi.serviceTypes().then(setServiceTypes).catch(() => setServiceTypes([]))
+  }, [])
 
   const [matches, setMatches] = useState<MatchResult[]>([])
   const [searchId, setSearchId] = useState('')
@@ -115,20 +121,21 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
   const handleBook = async (match: MatchResult) => {
     setBookingLoading(match.garage_id)
     try {
-      let reqTime: string
+      let start: Date
       if (timeMode === 'custom') {
-        reqTime = new Date(`${customDate}T${customTime}`).toISOString()
+        start = new Date(`${customDate}T${customTime}`)
       } else {
-        const now = new Date()
-        now.setMinutes(now.getMinutes() + match.travel_minutes + 5)
-        reqTime = now.toISOString()
+        start = new Date()
+        start.setMinutes(start.getMinutes() + match.travel_minutes + 5)
       }
+      const end = new Date(start.getTime() + 2 * 3600 * 1000)
 
       const res = await customerApi.createBooking({
         garage_id: match.garage_id,
         service_type_code: service,
         vehicle_id: vehicleId,
-        requested_time: reqTime,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
         matching_context: {
           search_id: searchId,
           match_score: match.total_score,
@@ -139,7 +146,7 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
       onClose()
       navigate(`/app/bookings/${res.id}`)
     } catch (e: any) {
-      alert('Không thể đặt chỗ: ' + e.message)
+      setError('Không thể đặt chỗ: ' + e.message)
       setBookingLoading(null)
     }
   }
@@ -161,7 +168,7 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
               <Crosshair className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-on-surface">Đặt chỗ thông minh (AI)</h2>
+              <h2 className="text-base sm:text-lg font-bold text-on-surface">Gợi ý thông minh</h2>
               <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">Tối ưu chỗ trống & khoảng cách</p>
             </div>
           </div>
@@ -255,10 +262,9 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
                     onChange={e => setService(e.target.value)}
                     className="w-full bg-surface-container-low border border-outline-variant text-on-surface rounded-2xl p-3 text-xs sm:text-sm outline-none focus:border-primary font-bold cursor-pointer"
                   >
-                    <option value="park_hourly">Gửi theo giờ</option>
-                    <option value="park_overnight">Gửi qua đêm</option>
-                    <option value="park_daily">Gửi theo ngày</option>
-                    <option value="park_monthly">Gói tháng</option>
+                    {serviceTypes.filter(s => s.category !== 'addon').map(s => (
+                      <option key={s.code} value={s.code}>{s.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -281,7 +287,7 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
                 disabled={!vehicleId}
                 className="w-full mt-2 bg-primary hover:opacity-90 text-white font-bold py-3.5 rounded-full flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 text-sm"
               >
-                <Search className="w-4 h-4" /> TÌM BÃI ĐỖ TỐI ƯU
+                <Search className="w-4 h-4" /> Tìm bãi phù hợp
               </button>
             </div>
           )}
@@ -295,12 +301,13 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
               <h3 className="text-base font-bold text-on-surface">
                 {loadingMsg}
               </h3>
-              <p className="text-on-surface-variant text-xs mt-1">Hệ thống đang đối chiếu thuật toán Matching Engine...</p>
+              <p className="text-on-surface-variant text-xs mt-1">Hệ thống đang so sánh các bãi phù hợp...</p>
             </div>
           )}
 
           {phase === 'results' && (
             <div className="space-y-3">
+              {matches.length === 0 && <p className="text-center text-sm text-on-surface-variant py-8">Không tìm thấy bãi phù hợp. Hãy thử khu vực hoặc thời điểm khác.</p>}
               {matches.map((m, i) => (
                 <Card key={m.garage_id} className={`p-4 rounded-2xl border transition-all ${i === 0 ? 'bg-primary-container/10 border-primary' : 'bg-surface border-outline-variant'}`}>
                   <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
@@ -308,17 +315,20 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
                       <div className="flex items-center gap-2 mb-1">
                         {i === 0 && (
                           <span className="bg-primary text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded flex items-center gap-1">
-                            <Star className="w-3 h-3 fill-white" /> Top 1
+                            <Star className="w-3 h-3 fill-white" /> Phù hợp nhất
                           </span>
                         )}
                         <h4 className="text-sm font-bold text-on-surface">{m.name}</h4>
                       </div>
                       <div className="flex items-center gap-2 text-[11px] font-semibold text-on-surface-variant mb-2">
-                        <span className={`px-1.5 py-0.5 rounded uppercase ${TIER_COLOR[m.tier] ?? 'bg-surface-container'}`}>{m.tier}</span>
+                        {m.tier > 0 ? <Stars value={m.tier} /> : <span>Chưa xếp hạng</span>}
                         <span>•</span>
                         <span className="flex items-center gap-1"><Navigation className="w-3 h-3 text-outline" /> {m.travel_distance_km.toFixed(1)} km ({m.travel_minutes} phút)</span>
                       </div>
                       
+                      {m.expected_available != null && (
+                        <p className="text-[11px] font-semibold text-success mb-1">Dự kiến còn {m.expected_available} chỗ khi bạn đến</p>
+                      )}
                       <div className="space-y-1">
                         {m.reasons.map((r, ri) => (
                           <div key={ri} className="flex items-start gap-1.5 text-xs text-on-surface-variant">
