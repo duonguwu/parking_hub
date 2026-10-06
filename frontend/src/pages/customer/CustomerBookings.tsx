@@ -1,128 +1,56 @@
-import { useState, useEffect } from 'react'
-import { Calendar, Search, Filter, History, Clock, BadgeCheck, XCircle, ChevronRight, Loader2 } from 'lucide-react'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { customerApi, type Booking, BOOKING_STATUS_MAP } from '@/services/api'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-
-function statusBadge(status: string) {
-  const { label, color } = BOOKING_STATUS_MAP[status] ?? { label: status, color: 'gray' }
-  const base = 'text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full'
-  if (color === 'blue') return <Badge className={`${base} bg-primary-container text-on-primary-container`}><Clock className="w-3 h-3 mr-1" />{label}</Badge>
-  if (color === 'green') return <Badge className={`${base} bg-success-soft text-success`}><BadgeCheck className="w-3 h-3 mr-1" />{label}</Badge>
-  if (color === 'red') return <Badge className={`${base} bg-error-container text-error`}><XCircle className="w-3 h-3 mr-1" />{label}</Badge>
-  return <Badge className={`${base} bg-surface-container text-on-surface-variant`}>{label}</Badge>
-}
-
-const ACTIVE_STATUSES = ['pending', 'confirmed', 'customer_arriving', 'customer_arrived', 'in_service']
+import { ChevronRight } from 'lucide-react'
+import { customerApi, formatVnd, formatDateTime, ACTIVE_BOOKING_STATUSES, type Booking } from '@/services/api'
+import { BookingStatusBadge, EmptyState, Spinner } from '@/components/parking/ParkingBits'
+import { cn } from '@/services/utils'
 
 export function CustomerBookings() {
-  const [bookings, setBookings] = useState<Booking[]>([])
+  const [items, setItems] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filterActive, setFilterActive] = useState(false)
+  const [error, setError] = useState('')
+  const [tab, setTab] = useState<'active' | 'history'>('active')
 
   useEffect(() => {
-    customerApi.bookings().then(setBookings).catch(console.error).finally(() => setLoading(false))
+    customerApi.bookings().then(setItems).catch((e) => setError(e.message)).finally(() => setLoading(false))
   }, [])
 
-  const filtered = bookings.filter(b => {
-    if (filterActive && !ACTIVE_STATUSES.includes(b.status)) return false
-    if (search && !b.booking_code.toLowerCase().includes(search.toLowerCase()) &&
-        !b.service_type_code.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
+  const active = items.filter((b) => ACTIVE_BOOKING_STATUSES.includes(b.status))
+  const history = items.filter((b) => !ACTIVE_BOOKING_STATUSES.includes(b.status))
+  const list = tab === 'active' ? active : history
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-
-      {/* Header */}
-      <div className="bg-surface rounded-3xl p-5 sm:p-6 border border-outline-variant">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-surface-container-low text-on-surface-variant rounded-full text-[10px] font-bold uppercase tracking-wider mb-2 border border-outline-variant">
-              <History className="w-3 h-3" /> Quản lý lượt đặt
-            </span>
-            <h1 className="text-xl sm:text-2xl font-black text-on-surface tracking-tight">Lịch hẹn gửi xe</h1>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-outline" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded-full pl-9 pr-4 py-2.5 outline-none focus:border-primary transition-colors placeholder:text-outline"
-                placeholder="Tìm theo mã hoặc dịch vụ..."
-              />
-            </div>
-            <button
-              onClick={() => setFilterActive(!filterActive)}
-              className={`rounded-full px-4 py-2.5 flex items-center justify-center gap-1.5 transition-colors font-bold text-xs shrink-0 ${
-                filterActive
-                  ? 'bg-primary text-white'
-                  : 'bg-surface border border-outline-variant hover:border-primary text-on-surface-variant'
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5" />
-              <span>Đang hoạt động</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="space-y-3">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-on-surface-variant text-xs font-medium bg-surface rounded-3xl border border-outline-variant">
-            Chưa có lịch hẹn nào.
-          </div>
-        ) : filtered.map(booking => (
-          <Link key={booking.id} to={`/app/bookings/${booking.id}`} className="block group">
-            <Card className="p-4 sm:p-5 rounded-3xl border border-outline-variant bg-surface hover:border-primary/50 transition-all">
-              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                {/* Status & Code */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    {statusBadge(booking.status)}
-                    <span className="text-[11px] font-bold text-on-surface-variant">
-                      #{booking.booking_code}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors capitalize">
-                    {booking.service_type_code.replace(/_/g, ' ')}
-                  </h3>
-                  <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-                    <Calendar className="w-3.5 h-3.5 text-outline" />
-                    <span>
-                      {new Date(booking.requested_time).toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Price & Action */}
-                <div className="flex justify-between sm:justify-end items-center gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-outline-variant/50">
-                  <div className="text-left sm:text-right">
-                    <span className="text-[10px] font-bold text-on-surface-variant uppercase block">Tổng phí</span>
-                    <span className="text-base font-black text-primary">
-                      {booking.price.toLocaleString('vi-VN')} đ
-                    </span>
-                  </div>
-                  <div className="w-8 h-8 rounded-full bg-surface-container-low group-hover:bg-primary group-hover:text-white text-on-surface-variant flex items-center justify-center transition-colors">
-                    <ChevronRight className="w-4 h-4" />
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </Link>
+    <div className="max-w-3xl mx-auto w-full space-y-4">
+      <h1 className="text-xl font-black text-on-surface">Lượt đặt của tôi</h1>
+      <div className="flex gap-1 bg-surface-container-low rounded-full p-1">
+        {([['active', `Đang hoạt động (${active.length})`], ['history', `Lịch sử (${history.length})`]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} className={cn('flex-1 py-2 rounded-full text-xs font-bold',
+            tab === k ? 'bg-surface text-primary shadow-sm' : 'text-on-surface-variant')}>{l}</button>
         ))}
       </div>
+      {loading ? <Spinner /> : error ? <EmptyState title="Không tải được lượt đặt" desc={error} />
+        : list.length === 0 ? <EmptyState title={tab === 'active' ? 'Không có lượt đặt đang hoạt động' : 'Chưa có lịch sử gửi xe'} />
+        : (
+          <div className="space-y-2">
+            {list.map((b) => (
+              <Link key={b.id} to={`/app/bookings/${b.id}`} className="flex items-center gap-3 p-3 rounded-2xl bg-surface border border-outline-variant hover:border-primary/50">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-on-surface truncate">{b.garage_name || 'Bãi đỗ'}</p>
+                    <BookingStatusBadge status={b.status} />
+                  </div>
+                  <p className="text-[11px] text-on-surface-variant">{b.license_plate}{b.service_name ? ` · ${b.service_name}` : ''}</p>
+                  <p className="text-[11px] text-on-surface-variant">{formatDateTime(b.start_time)} – {formatDateTime(b.end_time)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-on-surface">{formatVnd(b.final_price ?? b.quoted_price)}</p>
+                  <p className="text-[10px] text-on-surface-variant">{b.final_price != null ? 'Thực trả' : 'Tạm tính'}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-outline" />
+              </Link>
+            ))}
+          </div>
+        )}
     </div>
   )
 }
-

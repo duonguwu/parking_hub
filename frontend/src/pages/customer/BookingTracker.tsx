@@ -1,143 +1,128 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, CheckCircle2, Circle, Clock, Loader2 } from 'lucide-react'
+import { ChevronLeft, Loader2, Star, Clock } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { customerApi, type BookingTracking, BOOKING_STATUS_MAP } from '@/services/api'
+import { customerApi, formatVnd, formatDateTime, formatTime, type BookingTracking } from '@/services/api'
+import { BookingStatusBadge, EmptyState, Spinner } from '@/components/parking/ParkingBits'
+import { cn } from '@/services/utils'
 
-const TIMELINE_STEPS = [
-  { key: 'CREATED',             label: 'Đã đặt chỗ',        desc: 'Hệ thống đã ghi nhận yêu cầu giữ chỗ' },
-  { key: 'CONFIRMED',           label: 'Bãi đỗ xác nhận',   desc: 'Bãi đỗ đã giữ vị trí đỗ cho bạn' },
-  { key: 'CUSTOMER_DEPARTING',  label: 'Đang di chuyển',    desc: 'Đang lái xe đến bãi đỗ' },
-  { key: 'CUSTOMER_ARRIVED',    label: 'Đã đến cổng bãi',   desc: 'Hệ thống nhận diện biển số tại cổng vào' },
-  { key: 'IN_SERVICE',          label: 'Đang gửi xe',       desc: 'Xe đang đỗ an toàn trong bãi' },
-  { key: 'COMPLETED',           label: 'Hoàn tất lượt gửi', desc: 'Đã check-out và thanh toán thành công' },
-]
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="flex justify-between gap-3 text-sm py-1.5"><span className="text-on-surface-variant">{label}</span><span className="font-semibold text-on-surface text-right">{value}</span></div>
+}
 
 export function CustomerBookingTracker() {
   const { id } = useParams<{ id: string }>()
   const [data, setData] = useState<BookingTracking | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [actionErr, setActionErr] = useState('')
+  const [rating, setRating] = useState(0)
+  const [comment, setComment] = useState('')
 
-  useEffect(() => {
-    if (!id) return
-    const load = () =>
-      customerApi.bookingTracking(id)
-        .then(setData)
-        .catch(() => setError('Không thể tải thông tin theo dõi'))
-        .finally(() => setLoading(false))
-    load()
-    // Poll every 10s if in-service
-    const interval = setInterval(() => {
-      if (data?.booking?.status && ['confirmed','customer_arriving','in_service'].includes(data.booking.status)) {
-        load()
-      }
-    }, 10000)
-    return () => clearInterval(interval)
-  }, [id])
+  const load = () => id && customerApi.bookingTracking(id).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false))
+  useEffect(() => { load() }, [id])
 
-  const doneStatuses = new Set((data?.timeline ?? []).map(t => t.status))
-  const currentIdx = Math.max(...TIMELINE_STEPS.map((s, i) => doneStatuses.has(s.key) ? i : -1))
+  if (loading) return <Spinner />
+  if (error || !data) return <EmptyState title="Không tải được lượt đặt" desc={error} />
+  const b = data.booking
 
-  if (loading) return (
-    <div className="flex justify-center items-center min-h-[60vh]">
-      <Loader2 className="w-8 h-8 animate-spin text-primary" />
-    </div>
-  )
-
-  if (error || !data) return (
-    <div className="text-center py-16 text-on-surface-variant">{error || 'Không tìm thấy lượt đặt chỗ'}</div>
-  )
-
-  const { booking, timeline } = data
-  const statusMeta = BOOKING_STATUS_MAP[booking.status] ?? { label: booking.status, color: 'gray' }
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setActionErr('')
+    try { await fn(); await load(); setConfirmCancel(false) } catch (e: any) { setActionErr(e.message) } finally { setBusy(false) }
+  }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-
-      {/* Back Button */}
-      <Link to="/app/bookings" className="inline-flex items-center gap-1.5 text-xs font-bold text-on-surface-variant hover:text-primary transition-colors uppercase tracking-wider group">
-        <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-        <span>Danh sách lịch hẹn</span>
-      </Link>
-
-      {/* Booking Summary Card */}
-      <Card className="p-5 sm:p-6 rounded-3xl border border-outline-variant bg-surface">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-          <div>
-            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
-              Mã đặt chỗ: #{booking.booking_code}
-            </span>
-            <h1 className="text-xl sm:text-2xl font-black text-on-surface tracking-tight capitalize mb-2">
-              {booking.service_type_code.replace(/_/g, ' ')}
-            </h1>
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-              statusMeta.color === 'blue' ? 'bg-primary-container text-on-primary-container' :
-              statusMeta.color === 'green' ? 'bg-success-soft text-success' :
-              statusMeta.color === 'red' ? 'bg-error-container text-error' :
-              'bg-surface-container text-on-surface-variant'
-            }`}>
-              <span className={`w-2 h-2 rounded-full ${statusMeta.color === 'blue' ? 'bg-primary' : statusMeta.color === 'green' ? 'bg-success' : 'bg-outline'}`} />
-              {statusMeta.label}
-            </span>
-          </div>
-
-          <div className="sm:text-right pt-3 sm:pt-0 border-t sm:border-t-0 border-outline-variant/60">
-            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-0.5">Tổng thanh toán</p>
-            <p className="text-2xl sm:text-3xl font-black text-primary">{booking.price.toLocaleString('vi-VN')} đ</p>
-          </div>
+    <div className="max-w-2xl mx-auto w-full space-y-4 pb-8">
+      <div className="flex items-center gap-3">
+        <Link to="/app/bookings" className="p-2 rounded-full border border-outline-variant bg-surface"><ChevronLeft className="w-5 h-5" /></Link>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-black text-on-surface truncate">{b.garage_name || 'Lượt đặt'}</h1>
+          <p className="text-[11px] text-on-surface-variant">Mã {b.booking_code}</p>
         </div>
+        <BookingStatusBadge status={b.status} />
+      </div>
+
+      {b.status === 'reserved' && b.grace_until && (
+        <p className="text-sm bg-primary/10 text-primary rounded-2xl p-3 flex gap-2"><Clock className="w-4 h-4 shrink-0 mt-0.5" /> Bãi giữ chỗ đến {formatTime(b.grace_until)}</p>
+      )}
+      {b.status === 'pending' && <p className="text-sm bg-warning/10 text-warning rounded-2xl p-3">Đang chờ bãi xác nhận yêu cầu của bạn.</p>}
+
+      <Card className="p-4 rounded-2xl divide-y divide-outline-variant">
+        {b.garage_address && <Row label="Địa chỉ" value={b.garage_address} />}
+        <Row label="Biển số" value={b.license_plate || '—'} />
+        {b.service_name && <Row label="Dịch vụ" value={b.service_name} />}
+        <Row label="Thời gian" value={`${formatDateTime(b.start_time)} – ${formatDateTime(b.end_time)}`} />
+        <Row label="Tạm tính" value={formatVnd(b.quoted_price)} />
+        {b.status === 'checked_out' && <>
+          <Row label="Thực trả" value={<span className="text-primary">{formatVnd(b.final_price)}</span>} />
+          <Row label="Thanh toán" value={b.payment_status === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'} />
+        </>}
+        {b.cancellation_reason && <Row label="Lý do huỷ" value={b.cancellation_reason} />}
+        {b.garage_id && <div className="pt-2"><Link to={`/app/garages/${b.garage_id}`} className="text-xs font-bold text-primary">Xem thông tin bãi →</Link></div>}
       </Card>
 
-      {/* Timeline Tracking */}
-      <Card className="p-5 sm:p-6 rounded-3xl border border-outline-variant bg-surface">
-        <div className="flex items-center gap-2 mb-6">
-          <Clock className="text-primary w-5 h-5" />
-          <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider">Tiến trình gửi xe</h2>
-        </div>
-
-        <div className="space-y-0">
-          {TIMELINE_STEPS.map((step, idx) => {
-            const done = doneStatuses.has(step.key)
-            const isCurrent = idx === currentIdx && done
-            const timelineItem = timeline.find(t => t.status === step.key)
-            const isLast = idx === TIMELINE_STEPS.length - 1
-
-            return (
-              <div key={step.key} className="flex gap-4 sm:gap-6">
-                {/* Line + Icon */}
-                <div className="flex flex-col items-center">
-                  <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                    done
-                      ? (isCurrent ? 'bg-primary text-white' : 'bg-success text-white')
-                      : 'bg-surface-container-low border border-outline-variant'
-                  }`}>
-                    {done
-                      ? <CheckCircle2 className="w-4 h-4 text-white" />
-                      : <Circle className="w-4 h-4 text-outline" />
-                    }
-                  </div>
-                  {!isLast && (
-                    <div className={`w-0.5 flex-1 my-1 min-h-[28px] ${done ? 'bg-success-soft' : 'bg-outline-variant'}`} />
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="pb-5">
-                  <p className={`font-bold text-sm ${done ? 'text-on-surface' : 'text-outline'}`}>{step.label}</p>
-                  <p className="text-xs text-on-surface-variant mt-0.5">{timelineItem?.description ?? step.desc}</p>
-                  {timelineItem?.timestamp && (
-                    <p className="text-[10px] font-bold text-primary mt-1">
-                      {new Date(timelineItem.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+      <Card className="p-4 rounded-2xl">
+        <h2 className="font-bold text-on-surface mb-3">Tiến trình</h2>
+        {data.timeline.length === 0 ? <p className="text-xs text-on-surface-variant">Chưa có cập nhật.</p> : (
+          <ol className="space-y-3">
+            {data.timeline.map((t, i) => (
+              <li key={i} className="flex gap-3">
+                <span className={cn('mt-1 w-2.5 h-2.5 rounded-full shrink-0', i === data.timeline.length - 1 ? 'bg-primary' : 'bg-outline-variant')} />
+                <div><p className="text-sm font-semibold text-on-surface">{t.description}</p><p className="text-[11px] text-on-surface-variant">{formatDateTime(t.timestamp)}</p></div>
+              </li>
+            ))}
+          </ol>
+        )}
       </Card>
+
+      {actionErr && <p className="text-xs text-error font-semibold">{actionErr}</p>}
+
+      {(b.status === 'pending' || b.status === 'reserved') && (
+        confirmCancel ? (
+          <Card className="p-4 rounded-2xl space-y-2">
+            <p className="text-sm font-semibold">Bạn chắc chắn muốn huỷ lượt đặt này?</p>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Lý do (không bắt buộc)"
+              className="w-full h-10 rounded-xl border border-outline-variant bg-surface px-3 text-sm outline-none focus:border-primary" />
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmCancel(false)} className="flex-1 h-10 rounded-full border border-outline-variant text-sm font-semibold">Không</button>
+              <button disabled={busy} onClick={() => run(() => customerApi.cancelBooking(b.id, reason.trim()))}
+                className="flex-1 h-10 rounded-full bg-error text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />} Huỷ lượt đặt
+              </button>
+            </div>
+          </Card>
+        ) : <button onClick={() => setConfirmCancel(true)} className="w-full h-11 rounded-full border border-error text-error text-sm font-bold">Huỷ lượt đặt</button>
+      )}
+
+      {b.status === 'checked_out' && (
+        b.feedback?.rating ? (
+          <Card className="p-4 rounded-2xl">
+            <p className="text-sm font-semibold mb-1">Đánh giá của bạn</p>
+            <div className="flex gap-0.5">{[1, 2, 3, 4, 5].map((n) => <Star key={n} className={cn('w-4 h-4', n <= (b.feedback.rating ?? 0) ? 'fill-warning text-warning' : 'text-outline-variant')} />)}</div>
+            {b.feedback.comment && <p className="text-xs text-on-surface-variant mt-1">{b.feedback.comment}</p>}
+          </Card>
+        ) : (
+          <Card className="p-4 rounded-2xl space-y-3">
+            <p className="text-sm font-semibold">Đánh giá lượt gửi xe</p>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} onClick={() => setRating(n)} aria-label={`${n} sao`}>
+                  <Star className={cn('w-7 h-7', n <= rating ? 'fill-warning text-warning' : 'text-outline-variant')} />
+                </button>
+              ))}
+            </div>
+            <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} placeholder="Nhận xét (không bắt buộc)"
+              className="w-full rounded-xl border border-outline-variant bg-surface p-3 text-sm outline-none focus:border-primary" />
+            <button disabled={!rating || busy} onClick={() => run(() => customerApi.feedback(b.id, { rating, comment: comment.trim() || undefined }))}
+              className="w-full h-10 rounded-full bg-primary text-white text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Gửi đánh giá
+            </button>
+          </Card>
+        )
+      )}
     </div>
   )
 }
-
