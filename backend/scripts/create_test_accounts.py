@@ -48,7 +48,7 @@ async def main():
             "phone": "0900000001", "password": PASSWORD, "owner_name": "Chủ Bãi Test",
             "garage_name": "Bai Xe Test Q1", "address_street": "45 Lê Lợi",
             "address_district": "Quận 1", "address_city": "TP. Hồ Chí Minh",
-            "latitude": 10.7725, "longitude": 106.6980, "total_bays": 50,
+            "latitude": 10.7725, "longitude": 106.6980, "total_spots": 50,
         })
         results["owner"] = "created"
 

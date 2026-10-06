@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 
 OWNER_PASSWORD = "Owner@2026"
 CUSTOMER_PASSWORD = "Customer@2026"
+TEST_PASSWORD = "test123@"      # tài khoản demo có tên cố định (vin.*, minh.12, duong.12)
+TEST_TENANT = "bai-xe-test-q1"  # tenant của tài khoản test owner/manager/staff (tạo bởi create_test_accounts.py)
 SEED_TAG = "seed_demo"          # created_by của mọi bản ghi do script tạo, để --reset xoá đúng phần này
 
 # ── Khu vực ──────────────────────────────────────────────────────
@@ -71,6 +73,16 @@ DISTRICTS = [
      ["Cộng Hoà", "Trường Sơn", "Hoàng Văn Thụ", "Bạch Đằng", "Lý Thường Kiệt", "Út Tịch"]),
     ("td", "TP. Thủ Đức", 10.8040, 106.7400, 1.6, 14, 1.0,
      ["Xa Lộ Hà Nội", "Thảo Điền", "Quốc Hương", "Mai Chí Thọ", "Song Hành", "Trần Não"]),
+    ("tp", "Tân Phú", 10.7900, 106.6280, 1.6, 14, 0.95,
+     ["Tân Hương", "Lũy Bán Bích", "Tây Thạnh", "Âu Cơ", "Trường Chinh", "Thoại Ngọc Hầu", "Vườn Lài"]),
+    ("gv", "Gò Vấp", 10.8386, 106.6652, 1.8, 14, 0.95,
+     ["Quang Trung", "Phạm Văn Đồng", "Nguyễn Oanh", "Lê Đức Thọ", "Phan Văn Trị", "Nguyễn Văn Nghi"]),
+    ("q6", "Quận 6", 10.7480, 106.6350, 1.2, 8, 0.9, ["Hậu Giang", "Minh Phụng", "Bình Tiên", "Kinh Dương Vương"]),
+    ("q8", "Quận 8", 10.7240, 106.6280, 1.5, 7, 0.85, ["Phạm Thế Hiển", "Dương Bá Trạc", "Tạ Quang Bửu"]),
+    ("q11", "Quận 11", 10.7630, 106.6500, 1.0, 8, 0.95, ["Lạc Long Quân", "Lãnh Binh Thăng", "Hòa Bình", "Minh Phụng"]),
+    ("q12", "Quận 12", 10.8672, 106.6414, 2.2, 8, 0.8, ["Hà Huy Giáp", "Nguyễn Ảnh Thủ", "Tô Ký", "Lê Văn Khương"]),
+    ("btan", "Bình Tân", 10.7650, 106.6030, 2.0, 8, 0.8, ["Kinh Dương Vương", "Tên Lửa", "Hương Lộ 2", "Mã Lò"]),
+    ("nb", "Nhà Bè", 10.6950, 106.7380, 1.8, 5, 0.8, ["Huỳnh Tấn Phát", "Lê Văn Lương", "Nguyễn Bình"]),
 ]
 
 # Loại hình: (tên hiển thị trong tên bãi, trọng số theo quận trung tâm / ngoại vi)
@@ -108,11 +120,55 @@ FIRST_NAMES = ["An", "Bình", "Châu", "Dũng", "Giang", "Hà", "Hải", "Hạnh
                "Sơn", "Tâm", "Thảo", "Thành", "Trang", "Trung", "Tú", "Tuấn", "Vân", "Việt", "Vy", "Yến"]
 LAST_NAMES = ["Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Huỳnh", "Phan", "Vũ", "Võ", "Đặng", "Bùi", "Đỗ", "Ngô", "Dương"]
 MIDDLE = ["Văn", "Thị", "Minh", "Hoàng", "Thanh", "Ngọc", "Đức", "Thu", "Gia", "Quốc"]
-CARS = [("Toyota", "Vios", "sedan"), ("Toyota", "Corolla Cross", "suv"), ("Hyundai", "Accent", "sedan"),
-        ("Hyundai", "Santa Fe", "suv"), ("Kia", "Seltos", "suv"), ("Kia", "Morning", "hatchback"),
-        ("Mazda", "CX-5", "suv"), ("Mazda", "3", "sedan"), ("Honda", "City", "sedan"), ("Honda", "CR-V", "suv"),
-        ("Ford", "Ranger", "truck"), ("Ford", "Everest", "suv"), ("VinFast", "VF 5", "hatchback"),
-        ("VinFast", "VF 8", "suv"), ("Mitsubishi", "Xpander", "van"), ("Mercedes-Benz", "C 200", "sedan")]
+# (hãng, dòng xe, kiểu thân, hạng xe, cỡ xe, năm SX từ, đến, trọng số xuất hiện)
+CARS = [
+    ("Toyota", "Vios", "sedan", "standard", "medium", 2012, 2024, 12),
+    ("Toyota", "Corolla Cross", "suv", "standard", "large", 2021, 2025, 5),
+    ("Toyota", "Innova", "van", "standard", "large", 2008, 2023, 6),
+    ("Toyota", "Fortuner", "suv", "standard", "large", 2012, 2024, 4),
+    ("Toyota", "Camry", "sedan", "premium", "large", 2015, 2025, 3),
+    ("Hyundai", "Accent", "sedan", "standard", "medium", 2015, 2025, 8),
+    ("Hyundai", "Grand i10", "hatchback", "standard", "compact", 2014, 2025, 7),
+    ("Hyundai", "Santa Fe", "suv", "premium", "large", 2019, 2025, 3),
+    ("Kia", "Morning", "hatchback", "standard", "compact", 2011, 2024, 7),
+    ("Kia", "Seltos", "suv", "standard", "medium", 2021, 2025, 5),
+    ("Kia", "Carnival", "van", "premium", "xl", 2021, 2025, 2),
+    ("Mazda", "3", "sedan", "standard", "medium", 2016, 2025, 5),
+    ("Mazda", "CX-5", "suv", "standard", "large", 2017, 2025, 5),
+    ("Honda", "City", "sedan", "standard", "medium", 2015, 2025, 6),
+    ("Honda", "CR-V", "suv", "standard", "large", 2018, 2025, 4),
+    ("Ford", "Ranger", "truck", "standard", "xl", 2016, 2025, 4),
+    ("Ford", "Everest", "suv", "premium", "xl", 2019, 2025, 3),
+    ("Mitsubishi", "Xpander", "van", "standard", "large", 2019, 2025, 6),
+    ("Chevrolet", "Spark", "hatchback", "standard", "compact", 2011, 2018, 2),
+    ("VinFast", "VF 5", "hatchback", "standard", "compact", 2023, 2025, 4),
+    ("VinFast", "VF 8", "suv", "premium", "large", 2023, 2025, 3),
+    ("VinFast", "VF 9", "suv", "premium", "xl", 2024, 2025, 1),
+    ("Mercedes-Benz", "C 200", "sedan", "premium", "medium", 2019, 2024, 3),
+    ("Mercedes-Benz", "E 300", "sedan", "luxury", "large", 2020, 2025, 1.5),
+    ("Mercedes-Benz", "GLC 300", "suv", "luxury", "large", 2020, 2025, 1.5),
+    ("BMW", "X5", "suv", "luxury", "xl", 2020, 2025, 1),
+    ("Lexus", "RX 350", "suv", "luxury", "large", 2019, 2025, 1),
+    ("Porsche", "Cayenne", "suv", "luxury", "xl", 2021, 2025, 0.7),
+    ("Lamborghini", "Urus", "suv", "super", "xl", 2022, 2025, 0.2),
+]
+TIER_BY_TYPE = {"standard": 1, "premium": 2, "luxury": 3, "super": 4}
+# Tài xế demo có tên cố định, mỗi người 1 xe sang + 1 xe cũ: (hãng, dòng, thân, hạng, cỡ, năm, màu, biển)
+SHOWCASE_VEHICLES = {
+    "minh.12": [("Mercedes-Benz", "S 450 4MATIC", "sedan", "luxury", "large", 2023, "Đen", "51K-88888"),
+                ("Toyota", "Vios", "sedan", "standard", "medium", 2013, "Bạc", "59A-31245")],
+    "duong.12": [("VinFast", "VF 9", "suv", "premium", "xl", 2024, "Trắng", "51L-99999"),
+                 ("Kia", "Morning", "hatchback", "standard", "compact", 2011, "Đỏ", "50H-45678")],
+}
+SHOWCASE_CUSTOMERS_BY_NAME = {"minh.12": 1, "duong.12": 1}
+SHOWCASE_CUSTOMERS = [("minh.12", "Lê Quang Minh", "0900000012"), ("duong.12", "Phạm Thuỳ Dương", "0900000013")]
+
+
+def pick_car() -> tuple:
+    brand, model, body, vtype, size, y0, y1, _w = random.choices(CARS, [c[7] for c in CARS])[0]
+    return (brand, model, body, vtype, size, random.randint(y0, y1), random.choice(COLORS), None)
+
+
 COLORS = ["Trắng", "Đen", "Bạc", "Xám", "Đỏ", "Xanh"]
 REVIEW_GOOD = ["Bãi rộng, dễ vào", "Bảo vệ hướng dẫn nhiệt tình", "Đến nơi là có chỗ đúng như đặt",
                "Giá hợp lý, gần chỗ làm", "Vào ra nhanh, không phải chờ", "Hầm sạch, đủ sáng"]
@@ -233,12 +289,13 @@ async def main(args):
 
     if args.reset:
         logger.info("Xoá dữ liệu demo cũ…")
-        demo_garages = [g["_id"] async for g in GarageModel.collection.find({"created_by": SEED_TAG}, {"_id": 1})]
+        lot_filter = {"$or": [{"created_by": SEED_TAG}, {"tenant_id": TEST_TENANT}]}
+        demo_garages = [g["_id"] async for g in GarageModel.collection.find(lot_filter, {"_id": 1})]
         for coll, q in [
             (BookingModel, {"garage_id": {"$in": demo_garages}}),
             (CapacitySnapshotModel, {"garage_id": {"$in": demo_garages}}),
             (GarageServiceModel, {"garage_id": {"$in": demo_garages}}),
-            (GarageModel, {"created_by": SEED_TAG}),
+            (GarageModel, lot_filter),
             (TenantModel, {"created_by": SEED_TAG}),
             (VehicleModel, {"created_by": SEED_TAG}),
             (UserModel, {"created_by": SEED_TAG}),
@@ -258,106 +315,186 @@ async def main(args):
     scale = args.lots / sum(d[5] for d in DISTRICTS)
     garages, tenants, owners, services = [], [], [], []
     used_slugs = set()
-    for code, dname, clat, clng, radius, count, dfactor, streets in DISTRICTS:
-        n = max(1, round(count * scale))
-        weights = LOT_TYPE_WEIGHTS["central" if code in CENTRAL else "outer"]
-        for i in range(1, n + 1):
-            lot_type = random.choices(list(weights), list(weights.values()))[0]
-            street = random.choice(streets)
-            number = random.randint(1, 350)
-            name = f"{LOT_NAME_PREFIX[lot_type]} {street}" + (f" {number}" if lot_type in ("residential", "outdoor_commercial") else "")
-            slug = slugify(f"{name}-{code}")
-            while slug in used_slugs:
-                slug = f"{slug}-{random.randint(2, 99)}"
-            used_slugs.add(slug)
-            lat, lng = jitter(clat, clng, radius)
-            attrs = make_attributes(lot_type)
-            level = random.choices([1, 2, 3, 4], LEVEL_WEIGHTS[lot_type])[0]
-            if lot_type == "residential":
-                level = min(level, 2)
-            lo, hi = CAPACITY_RANGE[lot_type]
-            total = random.randint(lo, hi)
-            is_24h = lot_type in ("parking_building", "apartment_basement", "transit_hub") or random.random() < 0.25
-            status = random.choices(["active", "pending_review", "suspended"], [92, 6, 2])[0]
-            owner_username = f"owner_{code}_{i:02d}"
+    test_hash = hash_password(TEST_PASSWORD)
+    district_info = {d[0]: d for d in DISTRICTS}
 
-            svc_codes = ["park_hourly"]
-            if is_24h or random.random() < 0.5:
-                svc_codes.append("park_overnight")
-            if lot_type not in ("street",) and random.random() < 0.6:
-                svc_codes.append("park_daily")
-            if lot_type in ("office_basement", "parking_building", "covered_garage", "outdoor_commercial") and random.random() < 0.6:
-                svc_codes.append("park_workday")
-            if lot_type not in ("street",) and random.random() < 0.55:
-                svc_codes.append("park_monthly")
-            if attrs["ev_chargers"]["count"]:
-                svc_codes.append("ev_charging")
-            if lot_type in ("office_basement", "parking_building", "covered_garage") and random.random() < 0.3:
-                svc_codes.append("car_wash")
-            if lot_type in ("office_basement", "transit_hub") and random.random() < 0.2:
-                svc_codes.append("valet")
+    def add_lot(code, lot_type, street, number, lat, lng, *, name=None, tenant=None, tenant_name=None,
+                owner_username=None, owner_label=None, pw_hash=None, force=None):
+        """Tạo 1 bãi + bảng giá. `tenant` có sẵn thì dùng chung chủ bãi đó (chủ nhiều bãi);
+        chưa có thì tạo tenant và tài khoản chủ bãi mới. `force` ghi đè các thuộc tính ngẫu nhiên."""
+        force = force or {}
+        dname, dfactor = district_info[code][1], district_info[code][6]
+        name = name or (f"{LOT_NAME_PREFIX[lot_type]} {street}"
+                        + (f" {number}" if lot_type in ("residential", "outdoor_commercial") else ""))
+        slug = slugify(f"{name}-{code}")
+        while slug in used_slugs:
+            slug = f"{slug}-{random.randint(2, 99)}"
+        used_slugs.add(slug)
+        attrs = make_attributes(lot_type)
+        attrs.update(force.get("attrs", {}))
+        level = force.get("level") or random.choices([1, 2, 3, 4], LEVEL_WEIGHTS[lot_type])[0]
+        if lot_type == "residential":
+            level = min(level, 2)
+        lo, hi = CAPACITY_RANGE[lot_type]
+        total = force.get("total") or random.randint(lo, hi)
+        is_24h = force.get("is_24h", lot_type in ("parking_building", "apartment_basement", "transit_hub")
+                           or random.random() < 0.25)
+        status = force.get("status") or random.choices(["active", "pending_review", "suspended"], [92, 6, 2])[0]
 
-            reservable = {"street": 0.3, "residential": 1.0}.get(lot_type, random.choice([0.3, 0.4, 0.5, 0.6]))
-            monthly = int(total * random.choice([0, 0.1, 0.2, 0.3])) if "park_monthly" in svc_codes else 0
-            g = {
-                "_id": None, "tenant_id": slug, "name": name, "slug": slug,
-                "location": {"type": "Point", "coordinates": [lng, lat]},
-                "entrance_location": {"type": "Point", "coordinates": [round(lng + random.uniform(-0.0003, 0.0003), 6),
-                                                                       round(lat + random.uniform(-0.0003, 0.0003), 6)]},
-                "address": {"street": f"{number} {street}", "ward": "", "district": dname, "city": "TP. Hồ Chí Minh"},
-                "lot_type": lot_type, "integration_level": level,
-                "capacity": {"total_spots": total, "walk_in_spots": max(0, total - monthly),
-                             "monthly_spots": monthly, "reservable_ratio": reservable,
-                             "grace_minutes": random.choice([15, 15, 20, 30])},
-                "attributes": attrs,
-                "occupancy": {"occupied": 0, "source": "manual", "updated_at": None},
-                "operating_hours": make_hours(lot_type, is_24h),
-                "services_offered": svc_codes,
-                "photos": [],
-                "description": f"{LOT_NAME_PREFIX[lot_type]} tại {street}, {dname}. Dữ liệu demo.",
-                "contacts": {"phone": f"09{random.randint(10000000, 99999999)}", "manager_name": person_name()},
-                "status": status, "is_verified": False,
-                "is_accepting_bookings": status == "active" and random.random() > 0.03,
-                "grade": 1, "grade_score": 0, "grade_assessment": {}, "quality_score": 0.0, "next_inspection_at": None,
-                "stats": {}, **meta,
-            }
-            # Kiểm định: bãi đang hoạt động cấp ≥ 2 phần lớn đã được kiểm định
-            if status == "active" and (level >= 2 or random.random() < 0.3):
-                items = suggest_checklist(g)
+        svc_codes = ["park_hourly"]
+        if is_24h or random.random() < 0.5:
+            svc_codes.append("park_overnight")
+        if lot_type not in ("street",) and random.random() < 0.6:
+            svc_codes.append("park_daily")
+        if lot_type in ("office_basement", "parking_building", "covered_garage", "outdoor_commercial") and random.random() < 0.6:
+            svc_codes.append("park_workday")
+        if lot_type not in ("street",) and random.random() < 0.55:
+            svc_codes.append("park_monthly")
+        if attrs["ev_chargers"]["count"]:
+            svc_codes.append("ev_charging")
+        if lot_type in ("office_basement", "parking_building", "covered_garage") and random.random() < 0.3:
+            svc_codes.append("car_wash")
+        if lot_type in ("office_basement", "transit_hub") and random.random() < 0.2:
+            svc_codes.append("valet")
+        for sc in force.get("services", []):
+            if sc not in svc_codes:
+                svc_codes.append(sc)
+
+        reservable = force.get("reservable") or {"street": 0.3, "residential": 1.0}.get(
+            lot_type, random.choice([0.3, 0.4, 0.5, 0.6]))
+        monthly = int(total * random.choice([0, 0.1, 0.2, 0.3])) if "park_monthly" in svc_codes else 0
+        g = {
+            "_id": None, "tenant_id": tenant or force.get("tenant_slug") or slug, "name": name, "slug": slug,
+            "location": {"type": "Point", "coordinates": [lng, lat]},
+            "entrance_location": {"type": "Point", "coordinates": [round(lng + random.uniform(-0.0003, 0.0003), 6),
+                                                                   round(lat + random.uniform(-0.0003, 0.0003), 6)]},
+            "address": {"street": f"{number} {street}", "ward": "", "district": dname, "city": "TP. Hồ Chí Minh"},
+            "lot_type": lot_type, "integration_level": level,
+            "capacity": {"total_spots": total, "walk_in_spots": max(0, total - monthly),
+                         "monthly_spots": monthly, "reservable_ratio": reservable,
+                         "grace_minutes": random.choice([15, 15, 20, 30])},
+            "attributes": attrs,
+            "occupancy": {"occupied": 0, "source": "manual", "updated_at": None},
+            "operating_hours": make_hours(lot_type, is_24h),
+            "services_offered": svc_codes,
+            "photos": [],
+            "description": force.get("description") or f"{LOT_NAME_PREFIX[lot_type]} tại {street}, {dname}. Dữ liệu demo.",
+            "contacts": {"phone": f"09{random.randint(10000000, 99999999)}", "manager_name": person_name()},
+            "status": status, "is_verified": False,
+            "is_accepting_bookings": status == "active" and (bool(force) or random.random() > 0.03),   # bãi demo cố định luôn nhận đặt
+            "grade": 1, "grade_score": 0, "grade_assessment": {}, "quality_score": 0.0, "next_inspection_at": None,
+            "stats": {}, **meta,
+        }
+        # Kiểm định: bãi đang hoạt động cấp ≥ 2 phần lớn đã được kiểm định
+        if status == "active" and (level >= 2 or random.random() < 0.3):
+            items = suggest_checklist(g)
+            if force.get("perfect"):
+                items = {k: True for k in items}
+            else:
                 for k in items:            # người kiểm định chỉnh vài mục so với khai báo
                     if random.random() < 0.08:
                         items[k] = not items[k]
-                gr = compute_grade(items)
-                assessed = now - timedelta(days=random.randint(5, 170))
-                g.update({
-                    "grade": gr["grade"], "grade_score": gr["score"], "is_verified": True,
-                    "grade_assessment": {"items": items, "note": "", "assessed_at": assessed, "assessed_by": "superadmin"},
-                    "next_inspection_at": assessed + timedelta(days=180),
-                })
-            g.pop("_id")
-            garages.append(g)
+            gr = compute_grade(items)
+            assessed = now - timedelta(days=random.randint(5, 170))
+            g.update({
+                "grade": gr["grade"], "grade_score": gr["score"], "is_verified": True,
+                "grade_assessment": {"items": items, "note": "", "assessed_at": assessed, "assessed_by": "superadmin"},
+                "next_inspection_at": assessed + timedelta(days=180),
+            })
+        g.pop("_id")
+        garages.append(g)
+        if tenant is None:
             tenants.append({
-                "tenant_id": slug, "name": name, "slug": slug, "type": "garage", "status": "active",
+                "tenant_id": g["tenant_id"], "name": tenant_name or name, "slug": g["tenant_id"], "type": "garage",
+                "status": "active",
                 "contact": {"phone": g["contacts"]["phone"], "email": f"{owner_username}@example.com",
                             "address": f"{number} {street}, {dname}, TP. Hồ Chí Minh"},
                 "subscription_plan": "free",
                 "settings": {"timezone": "Asia/Ho_Chi_Minh", "currency": "VND", "language": "vi"}, **meta,
             })
             owners.append({
-                "tenant_id": slug, "username": owner_username, "email": f"{owner_username}@example.com",
-                "phone": g["contacts"]["phone"], "password_hash": owner_hash, "name": person_name(),
+                "tenant_id": g["tenant_id"], "username": owner_username, "email": f"{owner_username}@example.com",
+                "phone": g["contacts"]["phone"], "password_hash": pw_hash or owner_hash,
+                "name": owner_label or person_name(),
                 "role": "garage_owner", "is_active": True, "allowed_tenant_ids": [],
                 "customer_profile": {}, "staff_profile": {}, "last_login": None, **meta,
             })
-            factor = dfactor * PRICE_FACTOR[lot_type] * random.uniform(0.9, 1.1)
-            for sc in svc_codes:
-                pricing = make_pricing(stypes[sc], factor if stypes[sc]["category"] != "addon" else random.uniform(0.9, 1.2))
-                services.append({
-                    "tenant_id": slug, "_slug": slug, "service_type_code": sc,
-                    "price": display_price(pricing), "pricing": pricing,
-                    "estimated_duration_minutes": stypes[sc].get("estimated_duration_minutes", 60),
-                    "is_available": True, "note": "", **meta,
-                })
+        factor = dfactor * PRICE_FACTOR[lot_type] * random.uniform(0.9, 1.1) * force.get("price_factor", 1.0)
+        for sc in svc_codes:
+            pricing = make_pricing(stypes[sc], factor if stypes[sc]["category"] != "addon" else random.uniform(0.9, 1.2))
+            services.append({
+                "tenant_id": g["tenant_id"], "_slug": slug, "service_type_code": sc,
+                "price": display_price(pricing), "pricing": pricing,
+                "estimated_duration_minutes": stypes[sc].get("estimated_duration_minutes", 60),
+                "is_available": True, "note": "", **meta,
+            })
+        return g
+
+    for code, dname, clat, clng, radius, count, dfactor, streets in DISTRICTS:
+        n = max(1, round(count * scale))
+        weights = LOT_TYPE_WEIGHTS["central" if code in CENTRAL else "outer"]
+        last_tenant, chain = None, 0
+        for i in range(1, n + 1):
+            lot_type = random.choices(list(weights), list(weights.values()))[0]
+            street = random.choice(streets)
+            lat, lng = jitter(clat, clng, radius)
+            # ~15% bãi thuộc cùng chủ với bãi liền trước trong quận (chủ nhiều bãi, tối đa 3)
+            share = last_tenant is not None and chain < 3 and random.random() < 0.15
+            g = add_lot(code, lot_type, street, random.randint(1, 350), lat, lng,
+                        tenant=last_tenant if share else None, owner_username=f"owner_{code}_{i:02d}")
+            if share:
+                chain += 1
+            else:
+                last_tenant, chain = g["tenant_id"], 1
+
+    # ── Bãi và chủ bãi demo có tên cố định (mật khẩu test123@) ──
+    top_attrs = {"guard": "24h", "cctv": "full", "lighting": "good", "fire_safety": True, "restroom": True,
+                 "flood_risk": "none", "surface": "concrete", "payment_methods": ["cash", "transfer", "card"]}
+    vin_q1 = add_lot("q1", "parking_building", "Đồng Khởi", 12, 10.7776, 106.7035,
+                     name="Vin Parking Đồng Khởi", tenant_name="Vin Parking Quận 1", owner_username="vin.q1",
+                     owner_label="Chủ bãi Vin Quận 1", pw_hash=test_hash,
+                     force={"tenant_slug": "vin-parking-q1", "level": 4, "total": 520, "status": "active", "is_24h": True,
+                            "perfect": True, "reservable": 0.5, "price_factor": 1.1,
+                            "services": ["park_overnight", "park_daily", "park_workday", "park_monthly", "ev_charging", "car_wash", "valet"],
+                            "attrs": {**top_attrs, "cover": "full_roof", "max_height_m": 2.3, "parking_style": "attendant",
+                                      "ev_chargers": {"count": 24, "power_kw": 22, "connectors": ["Type 2"]}},
+                            "description": "Nhà xe cao tầng chuyên dụng ngay trung tâm Quận 1. Dữ liệu demo."})
+    vin_q1b = add_lot("q1", "office_basement", "Nguyễn Huệ", 28, 10.7742, 106.7031,
+                      name="Vin Parking Nguyễn Huệ", tenant=vin_q1["tenant_id"],
+                      force={"level": 3, "total": 260, "status": "active", "is_24h": False, "reservable": 0.4,
+                             "services": ["park_workday", "park_monthly"],
+                             "attrs": {**top_attrs, "cover": "basement", "max_height_m": 2.1, "parking_style": "self",
+                                       "ev_chargers": {"count": 8, "power_kw": 11, "connectors": ["Type 2"]}},
+                             "description": "Hầm toà nhà văn phòng khu Nguyễn Huệ. Dữ liệu demo."})
+    vin_lm = add_lot("bt", "parking_building", "Nguyễn Hữu Cảnh", 720, 10.7951, 106.7218,
+                     name="Vin Parking Landmark", tenant_name="Vin Parking Landmark", owner_username="vin.landmark",
+                     owner_label="Chủ bãi Vin Landmark", pw_hash=test_hash,
+                     force={"tenant_slug": "vin-parking-landmark", "level": 4, "total": 900, "status": "active",
+                            "is_24h": True, "perfect": True, "reservable": 0.5, "price_factor": 1.15,
+                            "services": ["park_overnight", "park_daily", "park_workday", "park_monthly", "ev_charging", "valet"],
+                            "attrs": {**top_attrs, "cover": "full_roof", "max_height_m": 2.4, "parking_style": "attendant",
+                                      "ev_chargers": {"count": 40, "power_kw": 60, "connectors": ["CCS2", "Type 2"]}},
+                            "description": "Nhà xe nhiều tầng phục vụ khu tổ hợp Bình Thạnh. Dữ liệu demo."})
+    vin_q3 = add_lot("q3", "office_basement", "Võ Văn Tần", 91, 10.7790, 106.6912,
+                     name="Vin Parking Võ Văn Tần", tenant_name="Vin Parking Quận 3", owner_username="vin.q3",
+                     owner_label="Chủ bãi Vin Quận 3", pw_hash=test_hash,
+                     force={"tenant_slug": "vin-parking-q3", "level": 3, "total": 180, "status": "active", "is_24h": False,
+                            "perfect": False, "reservable": 0.4, "services": ["park_workday", "park_monthly"],
+                            "attrs": {**top_attrs, "cover": "basement", "max_height_m": 2.0, "parking_style": "self"},
+                            "description": "Hầm toà nhà văn phòng Quận 3. Dữ liệu demo."})
+    add_lot("q3", "outdoor_commercial", "Nam Kỳ Khởi Nghĩa", 210, 10.7822, 106.6867,
+            name="Vin Parking Nam Kỳ Khởi Nghĩa (sân ngoài)", tenant=vin_q3["tenant_id"],
+            force={"level": 2, "total": 60, "status": "active", "is_24h": False, "reservable": 0.3, "price_factor": 0.8,
+                   "services": ["park_daily"],
+                   "attrs": {"cover": "open", "max_height_m": None, "guard": "none", "cctv": "none", "lighting": "poor",
+                             "surface": "gravel", "fire_safety": False, "restroom": False, "flood_risk": "frequent",
+                             "parking_style": "stacked", "ev_chargers": {"count": 0}},
+                   "description": "Sân ngoài trời tận dụng, không mái che. Dữ liệu demo."})
+    # Bãi của tài khoản test owner/manager/staff (tenant có sẵn, bãi cũ dạng dữ liệu cũ đã bị xoá khi --reset)
+    add_lot("q1", "covered_garage", "Lê Lợi", 45, 10.7725, 106.6980, name="Bãi Xe Test Q1", tenant=TEST_TENANT,
+            force={"level": 3, "total": 80, "status": "active", "is_24h": False, "reservable": 0.5,
+                   "services": ["park_overnight", "park_daily", "park_monthly"],
+                   "description": "Bãi dành cho tài khoản test chủ bãi. Dữ liệu demo."})
 
     res = await GarageModel.collection.insert_many(garages)
     for g, oid in zip(garages, res.inserted_ids):
@@ -375,6 +512,13 @@ async def main(args):
 
     # ── 2. Tài xế + xe ──
     customers, vehicles = [], []
+    for uname, full_name, phone in SHOWCASE_CUSTOMERS:
+        customers.append({
+            "tenant_id": "platform", "username": uname, "email": f"{uname}@test.parkinghub.asia",
+            "phone": phone, "password_hash": test_hash,
+            "name": full_name, "role": "customer", "is_active": True, "allowed_tenant_ids": [],
+            "customer_profile": {}, "staff_profile": {}, "last_login": None, **meta,
+        })
     for i in range(1, args.customers + 1):
         uname = f"customer_{i:02d}"
         customers.append({
@@ -389,18 +533,17 @@ async def main(args):
     for c, oid in zip(customers, cres.inserted_ids):
         c["_id"] = oid
         cust_plates[oid] = []
-        for k in range(random.choice([1, 1, 2])):
-            brand, model, body = random.choice(CARS)
-            plate_seq += 1
-            p = plate(plate_seq + random.randint(0, 3) * 1000)
-            while any(v["license_plate"] == p for v in vehicles):
+        picks = SHOWCASE_VEHICLES.get(c["username"]) or [pick_car() for _ in range(random.choice([1, 1, 2]))]
+        for k, (brand, model, body, vtype, size, year, color, fixed_plate) in enumerate(picks):
+            p = fixed_plate
+            while p is None or any(v["license_plate"] == p for v in vehicles):
                 plate_seq += 1
-                p = plate(plate_seq)
+                p = plate(plate_seq + random.randint(0, 3) * 1000)
             vehicles.append({
                 "tenant_id": "platform", "owner_user_id": str(oid), "license_plate": p, "brand": brand, "model": model,
-                "year": random.randint(2016, 2025), "color": random.choice(COLORS), "vehicle_type": "standard",
-                "body_type": body, "size_class": "large" if body in ("suv", "truck", "van") else "medium",
-                "minimum_garage_tier": 1, "vetc_linked": False, "is_default": k == 0, "is_active": True, **meta,
+                "year": year, "color": color, "vehicle_type": vtype,
+                "body_type": body, "size_class": size,
+                "minimum_garage_tier": TIER_BY_TYPE[vtype], "vetc_linked": False, "is_default": k == 0, "is_active": True, **meta,
             })
             cust_plates[oid].append(p)
     await VehicleModel.collection.insert_many(vehicles)
@@ -415,6 +558,9 @@ async def main(args):
     lot_weight = [math.sqrt(g["capacity"]["total_spots"]) * (1.5 if g["integration_level"] >= 3 else 1) for g in bookable]
     # Mỗi tài xế có 2–4 bãi quen (tạo khách quay lại)
     favorites = {c["_id"]: random.choices(bookable, lot_weight, k=random.randint(2, 4)) for c in customers}
+    cust_by_user = {c["username"]: c for c in customers}
+    favorites[cust_by_user["minh.12"]["_id"]] = [vin_q1, vin_lm, vin_q3, random.choices(bookable, lot_weight)[0]]
+    favorites[cust_by_user["duong.12"]["_id"]] = [vin_q3, vin_q1b, vin_lm, random.choices(bookable, lot_weight)[0]]
     seq = 0
 
     def code() -> str:
@@ -518,6 +664,9 @@ async def main(args):
 
     # Hiện tại: xe đang trong bãi + lượt sắp tới
     inside_count = {}
+    inside_pool = [c for c in customers if c["username"] not in dict(SHOWCASE_CUSTOMERS_BY_NAME)]
+    random.shuffle(inside_pool)
+    inside_pool = inside_pool[: len(inside_pool) // 2]
     for g in bookable:
         # Lượt đã xong từ sáng tới giờ (để "doanh thu hôm nay" có số liệu)
         today_start = to_local(now).replace(hour=6, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
@@ -533,9 +682,12 @@ async def main(args):
             bookings.append(build(g, None if walk else random.choice(customers), "park_hourly", start, end,
                                   "checked_out", source="walk_in" if walk else "app"))
         for _ in range(random.randint(1, 3)):
-            cust = random.choice(customers)
             start = now - timedelta(minutes=random.randint(20, 240))
-            bookings.append(build(g, cust, "park_hourly", start, start + timedelta(hours=random.choice([2, 3, 4, 6])), "checked_in"))
+            end = start + timedelta(hours=random.choice([2, 3, 4, 6]))
+            if inside_pool:   # mỗi tài xế chỉ có tối đa 1 xe đang trong bãi; còn lại là xe vãng lai
+                bookings.append(build(g, inside_pool.pop(), "park_hourly", start, end, "checked_in"))
+            else:
+                bookings.append(build(g, None, "park_hourly", start, end, "checked_in", source="walk_in"))
             inside_count[g["_id"]] = inside_count.get(g["_id"], 0) + 1
         for _ in range(random.randint(0, 2)):
             start = now - timedelta(minutes=random.randint(10, 120))
@@ -553,6 +705,16 @@ async def main(args):
             end = start + timedelta(hours=2)
         status = "reserved" if g["integration_level"] >= 3 or random.random() < 0.5 else "pending"
         bookings.append(build(g, cust, svc, start, end, status))
+
+    # Tài xế demo: đang có 1 xe trong bãi và 1 lượt sắp tới
+    for uname in ("minh.12", "duong.12"):
+        cust = cust_by_user[uname]
+        g_in, g_next = favorites[cust["_id"]][0], favorites[cust["_id"]][1]
+        start = now - timedelta(minutes=95)
+        bookings.append(build(g_in, cust, "park_hourly", start, start + timedelta(hours=3), "checked_in"))
+        inside_count[g_in["_id"]] = inside_count.get(g_in["_id"], 0) + 1
+        start = (now + timedelta(hours=20)).replace(minute=0, second=0, microsecond=0)
+        bookings.append(build(g_next, cust, "park_hourly", start, start + timedelta(hours=4), "reserved"))
 
     bookings.sort(key=lambda b: b["start_time"])
     for i in range(0, len(bookings), 2000):
@@ -601,13 +763,14 @@ async def main(args):
     logger.info("──────────────────────────────────────────")
     logger.info(f"Chủ bãi : owner_<quận>_<nn>, ví dụ {owners[0]['username']}  / {OWNER_PASSWORD}")
     logger.info(f"Tài xế  : customer_01 … customer_{args.customers:02d}  / {CUSTOMER_PASSWORD}")
+    logger.info(f"Demo    : minh.12, duong.12 (tài xế), vin.q1, vin.landmark, vin.q3 (chủ bãi)  / {TEST_PASSWORD}")
     logger.info("Admin   : SUPER_ADMIN_USERNAME / SUPER_ADMIN_PASSWORD trong .env")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Seed dữ liệu demo Parking HUB")
     ap.add_argument("--reset", action="store_true", help="Xoá dữ liệu demo cũ (created_by=seed_demo) trước khi seed")
-    ap.add_argument("--lots", type=int, default=150)
+    ap.add_argument("--lots", type=int, default=260)
     ap.add_argument("--customers", type=int, default=40)
     ap.add_argument("--bookings", type=int, default=2300, help="Số lượt qua app trong quá khứ (vãng lai cộng thêm ~35%)")
     ap.add_argument("--weeks", type=int, default=8, help="Số tuần snapshot lấp đầy")
