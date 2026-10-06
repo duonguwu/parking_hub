@@ -160,6 +160,7 @@ async def register_garage(data: dict) -> dict:
     from app.api.user.user_models import UserModel
     from app.api.tenant.tenant_models import TenantModel
     from app.api.garage.garage_models import GarageModel
+    from app.api.garage.garage_classification_utils import LOT_TYPES
     import re
 
     # Check uniqueness
@@ -239,21 +240,20 @@ async def register_garage(data: dict) -> dict:
             "city": data["address_city"],
             "province": data.get("address_province", ""),
         },
-        tier=1,  # Default: Basic
-        tier_score=0.0,
+        lot_type=data.get("lot_type") if data.get("lot_type") in LOT_TYPES else "outdoor_commercial",
+        integration_level=1,
+        grade=1,
         capacity={
-            "total_bays": data.get("total_bays", 2),
-            "max_vehicles_per_hour": data.get("total_bays", 2) * 2,
-            "avg_processing_time_minutes": 30,
+            "total_spots": data.get("total_spots", 20),
+            "walk_in_spots": data.get("total_spots", 20),
+            "monthly_spots": 0,
+            "reservable_ratio": 0.5,
+            "grace_minutes": 15,
         },
-        status="active",
+        status="pending_review",   # admin duyệt + đặt cấp tích hợp sau khi kiểm định
         is_verified=False,
         is_accepting_bookings=True,
-        current_load={
-            "vehicles_in_service": 0,
-            "vehicles_waiting": 0,
-            "estimated_wait_minutes": 0,
-        },
+        occupancy={"occupied": 0, "source": "manual", "updated_at": None},
         created_at=get_current_time(),
         updated_at=get_current_time(),
         created_by=data["username"],

@@ -18,7 +18,7 @@ class RegisterCustomerRequest(BaseModel):
 
 
 class RegisterGarageRequest(BaseModel):
-    """Đăng ký gara mới — tạo tenant + garage_owner user + garage."""
+    """Đăng ký bãi đỗ mới — tạo tenant + garage_owner user + garage (chờ admin duyệt)."""
     # Owner info
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., description="Email")
@@ -34,7 +34,8 @@ class RegisterGarageRequest(BaseModel):
     address_province: str = Field(default="")
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
-    total_bays: int = Field(default=2, ge=1, le=50)
+    total_spots: int = Field(default=20, ge=1, le=5000)
+    lot_type: str = Field(default="outdoor_commercial")
 
 
 class UserResponse(BaseModel):
