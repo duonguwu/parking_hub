@@ -1,0 +1,40 @@
+name: parkinghub-prod
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ParkingHub Application Stack — FastAPI backend
+#
+# Yêu cầu: docker-compose.infra.yml đã chạy (MongoDB + Redis healthy)
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f backend-app
+#
+# Traffic: Internet → nginx (host, SSL) → 127.0.0.1:8000 → backend-app
+#
+# network_mode: host → app gọi Mongo/Redis qua localhost (giống môi trường local),
+# uvicorn bind 127.0.0.1 nên port 8000 KHÔNG lộ ra ngoài.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  backend-app:
+    image: parkinghub-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: parkinghub-backend-app
+    restart: unless-stopped
+    network_mode: host
+    stop_grace_period: 30s
+    env_file: ./.env.production
+    volumes:
+      - ./logs:/app/logs
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "5" }

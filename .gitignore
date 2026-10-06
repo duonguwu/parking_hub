@@ -210,3 +210,7 @@ __marimo__/
 .docs_archive
 .claude
 .agents
+# Production secrets & runtime
+.env.production
+.env.*.local
+backend/logs/

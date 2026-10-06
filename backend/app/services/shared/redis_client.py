@@ -40,7 +40,7 @@ class RedisClient:
             )
             try:
                 await self._redis.ping()
-                logger.info(f"Redis connected: {settings.REDIS_URL}")
+                logger.info(f"Redis connected: {settings.REDIS_URL.split('@')[-1]}")
             except Exception as e:
                 logger.error(f"Redis connection failed: {e}")
                 self._redis = None

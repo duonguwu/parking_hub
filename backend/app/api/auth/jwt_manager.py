@@ -54,12 +54,12 @@ def decode_token(token: str, expected_type: str = "access") -> Optional[dict]:
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     response.set_cookie(
         key="access_token", value=access_token,
-        httponly=True, samesite="lax", secure=False,
+        httponly=True, samesite="lax", secure=settings.COOKIE_SECURE,
         path="/", max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     response.set_cookie(
         key="refresh_token", value=refresh_token,
-        httponly=True, samesite="lax", secure=False,
+        httponly=True, samesite="lax", secure=settings.COOKIE_SECURE,
         path="/auth", max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
