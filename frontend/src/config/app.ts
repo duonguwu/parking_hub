@@ -2,6 +2,9 @@
 export const APP_NAME = 'Parking HUB'
 export const APP_TAGLINE = 'Mạng lưới bãi đỗ xe thông minh'
 
-// Địa chỉ backend. Mặc định dùng relative path ('') để Vite proxy tự động chuyển tiếp tới backend, giúp chạy mượt qua Cloudflare Tunnel/LAN mà không bị lỗi CORS/Mixed Content.
-export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+// Địa chỉ backend. Ưu tiên VITE_API_BASE.
+// Dev: relative path ('') để Vite proxy chuyển tiếp tới backend local.
+// Production (Vercel): mặc định https://api.parkinghub.asia.
+export const API_BASE =
+  import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? 'https://api.parkinghub.asia' : '')
 

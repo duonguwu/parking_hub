@@ -44,18 +44,24 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
     </div>
   )
   if (!user) return <Navigate to="/login" replace />
-  if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/login" replace />
+  // Đã đăng nhập nhưng sai vai trò → về trang chủ đúng vai trò, không đẩy về /login
+  if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to={homeForRole(user.role)} replace />
   return <>{children}</>
+}
+
+const GARAGE_ROLES = ['garage_owner', 'garage_manager', 'garage_staff']
+
+function homeForRole(role: string): string {
+  if (role === 'customer') return '/app'
+  if (GARAGE_ROLES.includes(role)) return '/garage'
+  return '/admin'
 }
 
 function RoleRedirect() {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
-  if (user.role === 'customer') return <Navigate to="/app" replace />
-  if (user.role === 'garage_owner' || user.role === 'garage_manager' || user.role === 'garage_staff')
-    return <Navigate to="/garage" replace />
-  return <Navigate to="/admin" replace />
+  return <Navigate to={homeForRole(user.role)} replace />
 }
 
 function App() {

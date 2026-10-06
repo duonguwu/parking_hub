@@ -1,12 +1,35 @@
 // API client. Auth bằng HttpOnly cookie, không dùng localStorage.
 import { API_BASE } from '@/config/app'
 
-export const apiFetch = async (path: string, options?: RequestInit) => {
-  return fetch(`${API_BASE}${path}`, {
+// Các path không được auto-refresh (tránh vòng lặp vô hạn)
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout']
+
+// Promise dùng chung: nhiều request cùng gặp 401 chỉ gọi /auth/refresh một lần
+let refreshPromise: Promise<boolean> | null = null
+
+const refreshAccessToken = (): Promise<boolean> => {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => { refreshPromise = null })
+  }
+  return refreshPromise
+}
+
+const rawFetch = (path: string, options?: RequestInit) =>
+  fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
   })
+
+export const apiFetch = async (path: string, options?: RequestInit) => {
+  const res = await rawFetch(path, options)
+  if (res.status !== 401 || NO_REFRESH_PATHS.some((p) => path.startsWith(p))) return res
+  // Access token hết hạn → thử refresh một lần rồi gửi lại request
+  const refreshed = await refreshAccessToken()
+  return refreshed ? rawFetch(path, options) : res
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
