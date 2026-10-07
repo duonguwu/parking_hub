@@ -141,6 +141,47 @@ class OSMClient:
 
         return info
 
+    # ── Route geometry (để FE vẽ tuyến) ───────────────────────────
+
+    async def get_route_path(
+        self, origin: LatLng, destination: LatLng, max_points: int = 80,
+    ) -> List[List[float]]:
+        """Danh sách [lat, lng] dọc tuyến. OSRM lỗi → đường thẳng 2 điểm."""
+        cache_key = f"routepath:{origin.cache_key()}->{destination.cache_key()}"
+        try:
+            cached = await redis_client.get_json(cache_key)
+            if cached:
+                return cached
+        except Exception as e:
+            logger.debug(f"Redis cache miss/error: {e}")
+
+        straight = [[origin.lat, origin.lng], [destination.lat, destination.lng]]
+        path = straight
+        try:
+            url = f"{settings.OSRM_BASE_URL}/route/v1/driving/{origin.lng},{origin.lat};{destination.lng},{destination.lat}"
+            params = {"overview": "simplified", "geometries": "geojson", "alternatives": "false"}
+            http = await self._get_http()
+            resp = await http.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("code") == "Ok" and data.get("routes"):
+                coords = data["routes"][0]["geometry"]["coordinates"]
+                if len(coords) >= 2:
+                    if len(coords) > max_points:
+                        step = (len(coords) - 1) / (max_points - 1)
+                        coords = [coords[round(i * step)] for i in range(max_points)]
+                    path = [[c[1], c[0]] for c in coords]
+        except Exception as e:
+            logger.warning(f"OSRM route geometry failed, using straight line: {e}")
+            return straight  # không cache đường dự phòng
+
+        try:
+            await redis_client.set_json(cache_key, path, ttl_seconds=settings.OSM_ROUTE_CACHE_TTL_SECONDS)
+        except Exception as e:
+            logger.debug(f"Redis cache set failed: {e}")
+        return path
+
+
     # ── Matrix (batch routing) ────────────────────────────────────
 
     async def get_matrix(
