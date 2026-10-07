@@ -81,6 +81,9 @@ class TestAffinityScore:
 
 
 class TestPriceScore:
+    def test_missing_price_is_neutral(self):
+        assert score_price(None, "high", [10, 50, 100]) == 0.7
+
     def test_empty_area(self):
         assert score_price(100, "medium", []) == 0.7   # neutral
 
@@ -121,6 +124,9 @@ class TestReliabilityScore:
 
 
 class TestEnvironmentScore:
+    def test_default_snapshot_is_unknown(self):
+        assert WeatherSnapshot().condition == "unknown"
+
     def test_no_weather_neutral(self):
         assert score_environment(None) == 1.0
 

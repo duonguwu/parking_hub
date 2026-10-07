@@ -66,7 +66,7 @@ def haversine_meters(a: LatLng, b: LatLng) -> float:
     return 2 * R * math.asin(math.sqrt(x))
 
 
-def _haversine_route(origin: LatLng, destination: LatLng) -> RouteInfo:
+def estimate_route(origin: LatLng, destination: LatLng) -> RouteInfo:
     """Fallback when OSRM unavailable — estimate road distance + time."""
     straight = haversine_meters(origin, destination)
     road = straight * ROAD_DISTANCE_FACTOR
@@ -125,7 +125,7 @@ class OSMClient:
             )
         except Exception as e:
             logger.warning(f"OSRM failed, using Haversine fallback: {e}")
-            info = _haversine_route(origin, destination)
+            info = estimate_route(origin, destination)
 
         # Cache result
         try:
@@ -175,6 +175,20 @@ class OSMClient:
             durations = data.get("durations") or []
             distances = data.get("distances") or []
 
+            expected_rows = len(origins)
+            expected_cols = len(destinations)
+            if len(durations) != expected_rows or any(len(row) != expected_cols for row in durations):
+                raise ValueError("OSRM table returned an invalid duration matrix shape")
+
+            used_duration_fallback = False
+            for origin_idx, origin in enumerate(origins):
+                for destination_idx, destination in enumerate(destinations):
+                    if durations[origin_idx][destination_idx] is None:
+                        durations[origin_idx][destination_idx] = estimate_route(
+                            origin, destination,
+                        ).duration_seconds
+                        used_duration_fallback = True
+
             # Some public OSRMs don't return distances — fallback to Haversine estimate
             if not distances or any(d is None for row in distances for d in row):
                 distances = [
@@ -185,7 +199,7 @@ class OSMClient:
             return Matrix(
                 durations=durations,
                 distances=distances,
-                confidence=1.0,
+                confidence=0.5 if used_duration_fallback else 1.0,
                 sources_count=len(origins),
                 destinations_count=len(destinations),
             )
@@ -193,7 +207,7 @@ class OSMClient:
             logger.warning(f"OSRM matrix failed, using Haversine fallback: {e}")
             # Per-pair Haversine estimation
             durations = [
-                [_haversine_route(o, d).duration_seconds for d in destinations]
+                [estimate_route(o, d).duration_seconds for d in destinations]
                 for o in origins
             ]
             distances = [
