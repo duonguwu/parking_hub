@@ -527,6 +527,17 @@ export interface MatchResult {
   component_scores: Record<string, number>
   reasons: { type: string; text: string }[]
   trade_offs: { type: string; text: string }[]
+  /** Danh sách [lat, lng] dọc tuyến từ vị trí tìm kiếm tới bãi. */
+  route?: [number, number][]
+}
+
+export interface MatchCandidatePin {
+  garage_id: string
+  name: string
+  location: LatLng
+  score?: number
+  selected?: boolean
+  reason?: string
 }
 
 export interface MatchSearchResponse {
@@ -534,6 +545,8 @@ export interface MatchSearchResponse {
   session_id: string
   results_count: number
   matches: MatchResult[]
+  candidates?: MatchCandidatePin[]
+  rejected?: MatchCandidatePin[]
 }
 
 // ── Types: cổng chủ bãi ────────────────────────────────────────────────────
