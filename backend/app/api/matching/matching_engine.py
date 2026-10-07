@@ -29,7 +29,7 @@ from app.api.matching.scoring import (
 )
 from app.api.shared.tool.datetime_convert import get_current_time
 from app.api.shared.tool.convert_object_id import convert_mongo_object_id
-from app.services.osm.osm_client import osm_client, LatLng, haversine_meters
+from app.services.osm.osm_client import osm_client, LatLng, haversine_meters, estimate_route
 from app.services.weather.weather_service import weather_service, WeatherSnapshot
 
 logger = logging.getLogger(__name__)
@@ -107,16 +107,15 @@ class MatchResult:
 
 # ── Stage 1: Hard filter ────────────────────────────────────────────
 
-async def stage1_filter(
-    current_location: LatLng, vehicle_min_tier: int, service_type_code: str,
-    max_travel_minutes: int, must_have_amenities: List[str],
-    excluded_garage_ids: List[str], requested_time: datetime,
-    max_candidates: int = 30,
-) -> List[dict]:
-    # Approx: in urban VN, 1 min ~= 0.8km straight-line
-    # So max_distance_meters = max_travel_minutes * 800  (conservative)
+def _build_candidate_query(
+    current_location: LatLng,
+    vehicle_min_tier: int,
+    service_type_code: str,
+    max_travel_minutes: int,
+    must_have_amenities: List[str],
+    excluded_garage_ids: List[str],
+) -> Dict[str, Any]:
     max_dist_m = int(max_travel_minutes * 800)
-
     query: Dict[str, Any] = {
         "location": {
             "$nearSphere": {
@@ -126,6 +125,7 @@ async def stage1_filter(
         },
         "status": "active",
         "integration_level": {"$gte": 2},
+        "grade": {"$gte": vehicle_min_tier},
         "is_accepting_bookings": True,
         "services_offered": service_type_code,
     }
@@ -136,6 +136,24 @@ async def stage1_filter(
     if excluded_garage_ids:
         oids = [convert_mongo_object_id(g) for g in excluded_garage_ids]
         query["_id"] = {"$nin": [o for o in oids if o]}
+    return query
+
+async def stage1_filter(
+    current_location: LatLng, vehicle_min_tier: int, service_type_code: str,
+    max_travel_minutes: int, must_have_amenities: List[str],
+    excluded_garage_ids: List[str], requested_time: datetime,
+    max_candidates: int = 30,
+) -> List[dict]:
+    # Approx: in urban VN, 1 min ~= 0.8km straight-line
+    # So max_distance_meters = max_travel_minutes * 800  (conservative)
+    query = _build_candidate_query(
+        current_location=current_location,
+        vehicle_min_tier=vehicle_min_tier,
+        service_type_code=service_type_code,
+        max_travel_minutes=max_travel_minutes,
+        must_have_amenities=must_have_amenities,
+        excluded_garage_ids=excluded_garage_ids,
+    )
 
     docs = await GarageModel.collection.find(query).limit(max_candidates).to_list(length=max_candidates)
     # Filter by operating hours in Python
@@ -143,6 +161,13 @@ async def stage1_filter(
 
 
 # ── Stage 2: Enrichment ─────────────────────────────────────────────
+
+async def _find_service_price_doc(garage_id: Any, service_type_code: str) -> Optional[dict]:
+    return await GarageServiceModel.collection.find_one({
+        "garage_id": garage_id,
+        "service_type_code": service_type_code,
+        "is_available": True,
+    })
 
 async def stage2_enrich(
     candidates: List[dict], current_location: LatLng, service_type_code: str,
@@ -163,28 +188,30 @@ async def stage2_enrich(
     except Exception:
         weather = WeatherSnapshot()
 
-    now = get_current_time()
     enriched: List[EnrichedCandidate] = []
     for idx, g in enumerate(candidates):
+        fallback_route = None
         try:
-            travel_sec = matrix.durations[0][idx] if matrix.durations else 0
-        except (IndexError, TypeError):
-            travel_sec = 0
+            travel_sec = matrix.durations[0][idx]
+            if travel_sec is None:
+                raise ValueError("missing matrix duration")
+        except (IndexError, TypeError, ValueError):
+            fallback_route = estimate_route(current_location, dests[idx])
+            travel_sec = fallback_route.duration_seconds
         travel_min = (travel_sec / 60.0) * traffic_multiplier
         try:
-            dist_m = matrix.distances[0][idx] if matrix.distances else 0
-        except (IndexError, TypeError):
-            dist_m = 0
+            dist_m = matrix.distances[0][idx]
+            if dist_m is None:
+                raise ValueError("missing matrix distance")
+        except (IndexError, TypeError, ValueError):
+            fallback_route = fallback_route or estimate_route(current_location, dests[idx])
+            dist_m = fallback_route.distance_meters
 
-        arrival = now + timedelta(minutes=travel_min)
+        arrival = requested_time + timedelta(minutes=travel_min)
         predicted = await predict_availability(g, arrival)
 
         # Báo giá 2 giờ gửi tại bãi (dùng để so sánh giá trong khu vực)
-        price_doc = await GarageServiceModel.collection.find_one({
-            "garage_id": g["_id"],
-            "service_type_code": service_type_code,
-            "is_available": True,
-        })
+        price_doc = await _find_service_price_doc(g["_id"], service_type_code)
         price = (quote_price(resolve_pricing(price_doc), arrival, arrival + timedelta(hours=2))["amount"]
                  if price_doc else None)
 
@@ -262,9 +289,9 @@ async def stage3_score(
             "distance": score_distance(c.travel_min, user_dist_tol_min),
             "wait": score_wait(scarcity_wait, wait_tol_min),
             "quality": score_quality(tier_score, days),
-            "fit": 1.0 if expected_avail > 0 else 0.3,
+            "fit": score_fit(vehicle_min_tier, tier),
             "affinity": score_affinity(user_affinity, str(g["_id"])),
-            "price": score_price(c.service_price or 0, price_sensitivity, area_prices),
+            "price": score_price(c.service_price, price_sensitivity, area_prices),
             "reliability": score_reliability(stats),
             "environment": score_environment(c.weather_at_arrival, cover),
         }

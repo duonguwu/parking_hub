@@ -25,7 +25,7 @@ class WeatherSnapshot:
     precipitation_mm: float = 0.0         # current hour precipitation
     precipitation_mm_last_hour: float = 0.0
     temperature_c: float = 30.0           # VN default
-    condition: str = "clear"              # clear | drizzle | rain | storm | unknown
+    condition: str = "unknown"            # clear | drizzle | rain | storm | unknown
 
     @property
     def is_raining(self) -> bool:
@@ -111,7 +111,7 @@ class WeatherService:
             if past_precip:
                 snap.precipitation_mm_last_hour = float(past_precip[0] or 0)
         except Exception as e:
-            logger.warning(f"Open-Meteo failed, default clear: {e}")
+            logger.warning(f"Open-Meteo failed, weather unknown: {e}")
             snap = WeatherSnapshot()
 
         try:

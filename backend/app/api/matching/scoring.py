@@ -54,7 +54,9 @@ def score_affinity(user_affinity: List[dict], garage_id: str) -> float:
     return 0.0
 
 
-def score_price(service_price: int, price_sensitivity: str, area_prices: List[int]) -> float:
+def score_price(service_price: Optional[int], price_sensitivity: str, area_prices: List[int]) -> float:
+    if service_price is None:
+        return 0.7  # unknown price is neutral, never treated as free
     if not area_prices:
         return 0.7  # no context
     if price_sensitivity == "low":
