@@ -128,3 +128,30 @@ class TestMatchReasons:
         # At least distance should be a strong reason (garage very close)
         reason_types = {r["type"] for r in top["reasons"]}
         assert "best_distance" in reason_types or "low_wait" in reason_types or "no_wait" in reason_types
+
+
+class TestMatchVisualization:
+    async def test_response_has_route_candidates_rejected(
+        self, client: AsyncClient, configured_garage,
+    ):
+        """Dữ liệu cho FE trình chiếu: tuyến Top, ứng viên đã chấm, bãi bị loại."""
+        resp = await client.post(
+            "/match/search",
+            json={
+                "current_location": {"lat": 10.7835, "lng": 106.6860},
+                "service_type_code": "park_overnight",
+                "max_travel_minutes": 30,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+
+        top = data["matches"][0]
+        assert len(top["route"]) >= 2
+        assert all(len(p) == 2 for p in top["route"])
+
+        assert isinstance(data["rejected"], list)
+        cands = data["candidates"]
+        assert len(cands) >= 1
+        assert any(c["selected"] and c["garage_id"] == top["garage_id"] for c in cands)
+        assert {"garage_id", "name", "location", "score", "selected"} <= set(cands[0].keys())

@@ -11,7 +11,7 @@ export const HCM_CENTER: LatLng = { lat: 10.7769, lng: 106.7009 }
 
 // Key CARTO lấy từ env (prod cần key, dev bỏ trống vẫn chạy)
 const CARTO_BASEMAP_KEY = import.meta.env.VITE_CARTO_BASEMAP_KEY?.trim()
-const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${
+export const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${
   CARTO_BASEMAP_KEY ? `?key=${encodeURIComponent(CARTO_BASEMAP_KEY)}` : ''
 }`
 
