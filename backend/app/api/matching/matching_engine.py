@@ -143,6 +143,7 @@ async def stage1_filter(
     max_travel_minutes: int, must_have_amenities: List[str],
     excluded_garage_ids: List[str], requested_time: datetime,
     max_candidates: int = 30,
+    rejected: Optional[List[dict]] = None,
 ) -> List[dict]:
     # Approx: in urban VN, 1 min ~= 0.8km straight-line
     # So max_distance_meters = max_travel_minutes * 800  (conservative)
@@ -157,7 +158,13 @@ async def stage1_filter(
 
     docs = await GarageModel.collection.find(query).limit(max_candidates).to_list(length=max_candidates)
     # Filter by operating hours in Python
-    return [g for g in docs if _is_garage_open_at(g, requested_time)]
+    open_docs = []
+    for g in docs:
+        if _is_garage_open_at(g, requested_time):
+            open_docs.append(g)
+        elif rejected is not None:
+            rejected.append({"garage": g, "reason": "Ngoài giờ mở cửa"})
+    return open_docs
 
 
 # ── Stage 2: Enrichment ─────────────────────────────────────────────
@@ -400,6 +407,7 @@ async def find_best_garages(
     is_peak = _is_peak_hour(requested_time)
 
     # Stage 1
+    rejected_raw: List[dict] = []
     candidates = await stage1_filter(
         current_location=current_location,
         vehicle_min_tier=vehicle_min_tier,
@@ -408,6 +416,7 @@ async def find_best_garages(
         must_have_amenities=must_have_amenities,
         excluded_garage_ids=excluded_garage_ids,
         requested_time=requested_time,
+        rejected=rejected_raw,
     )
 
     # Stage 2
@@ -439,8 +448,34 @@ async def find_best_garages(
         area_demand=area_demand,
     )
 
+    def _pin(g: dict) -> Optional[Dict[str, Any]]:
+        pos = (g.get("location") or {}).get("coordinates") or []
+        if len(pos) < 2:
+            return None
+        return {"garage_id": str(g.get("_id")), "name": g.get("name", ""), "location": {"lat": pos[1], "lng": pos[0]}}
+
+    top_ids = {m.garage_id for m in top}
+    cand_pins = []
+    for m in scored:
+        loc = m.location or {}
+        if loc.get("lat") is None or loc.get("lng") is None:
+            continue
+        cand_pins.append({
+            "garage_id": m.garage_id, "name": m.garage_name,
+            "location": {"lat": loc["lat"], "lng": loc["lng"]},
+            "score": round(m.total_score, 1), "selected": m.garage_id in top_ids,
+        })
+    rejected_pins = []
+    for r in rejected_raw:
+        pin = _pin(r["garage"])
+        if pin:
+            pin["reason"] = r["reason"]
+            rejected_pins.append(pin)
+
     return {
         "matches": top,
+        "candidates": cand_pins,
+        "rejected": rejected_pins,
         "all_scored_count": len(scored),
         "context": {
             "weather": weather.condition if weather else "unknown",

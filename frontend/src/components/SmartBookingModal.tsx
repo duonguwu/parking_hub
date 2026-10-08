@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { X, Search, Zap, Loader2, Navigation, Clock, CheckCircle2, Star, Crosshair } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Stars } from '@/components/parking/ParkingBits'
-import { customerApi, matchingApi, catalogApi, type Vehicle, type MatchResult, type ServiceType } from '@/services/api'
+import { customerApi, matchingApi, catalogApi, type Vehicle, type MatchResult, type MatchCandidatePin, type ServiceType } from '@/services/api'
+import { MatchStage } from '@/components/match/MatchStage'
+import { useMatchChoreography } from '@/components/match/useMatchChoreography'
 
 interface SmartBookingModalProps {
   isOpen: boolean
@@ -46,7 +48,10 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
 
   const [matches, setMatches] = useState<MatchResult[]>([])
   const [searchId, setSearchId] = useState('')
-  const [loadingMsg, setLoadingMsg] = useState('Đang tải dữ liệu...')
+  const [candidates, setCandidates] = useState<MatchCandidatePin[]>([])
+  const [rejected, setRejected] = useState<MatchCandidatePin[]>([])
+  const [origin, setOrigin] = useState(DEFAULT_COORDS)
+  const { stage, skip } = useMatchChoreography(phase === 'results')
   const [bookingLoading, setBookingLoading] = useState<string | null>(null)
   const [error, setError] = useState('')
 
@@ -54,6 +59,8 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
     if (isOpen) {
       setPhase('input')
       setMatches([])
+      setCandidates([])
+      setRejected([])
       setError('')
       
       const d = new Date()
@@ -72,11 +79,8 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
 
   const handleSearch = async () => {
     setPhase('scanning')
-    setLoadingMsg('Đang phân tích mạng lưới bãi đỗ xe...')
     setError('')
 
-    setTimeout(() => setLoadingMsg('Đang kiểm tra chỗ trống & thời gian di chuyển...'), 1000)
-    setTimeout(() => setLoadingMsg('Đang chấm điểm và xếp hạng đề xuất tối ưu...'), 2000)
 
     try {
       let pos: [number, number]
@@ -96,6 +100,8 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
         pos = loc ? [loc.lat!, loc.lng!] : [DEFAULT_COORDS.lat, DEFAULT_COORDS.lng]
       }
 
+      setOrigin({ lat: pos[0], lng: pos[1] })
+
       let reqTime: string | undefined = undefined
       if (timeMode === 'custom') {
         reqTime = new Date(`${customDate}T${customTime}`).toISOString()
@@ -110,6 +116,8 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
       })
 
       setMatches(res.matches)
+      setCandidates(res.candidates ?? [])
+      setRejected(res.rejected ?? [])
       setSearchId(res.search_id)
       setPhase('results')
     } catch (e: any) {
@@ -149,6 +157,79 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
       setError('Không thể đặt chỗ: ' + e.message)
       setBookingLoading(null)
     }
+  }
+
+  const resultsView = (
+        <div className="space-y-3">
+          {matches.length === 0 && <p className="text-center text-sm text-on-surface-variant py-8">Không tìm thấy bãi phù hợp. Hãy thử khu vực hoặc thời điểm khác.</p>}
+          {matches.map((m, i) => (
+            <Card key={m.garage_id} className={`p-4 rounded-2xl border transition-all ${i === 0 ? 'bg-primary-container/10 border-primary' : 'bg-surface border-outline-variant'}`}>
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    {i === 0 && (
+                      <span className="bg-primary text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-white" /> Phù hợp nhất
+                      </span>
+                    )}
+                    <h4 className="text-sm font-bold text-on-surface">{m.name}</h4>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] font-semibold text-on-surface-variant mb-2">
+                    {m.tier > 0 ? <Stars value={m.tier} /> : <span>Chưa xếp hạng</span>}
+                    <span>•</span>
+                    <span className="flex items-center gap-1"><Navigation className="w-3 h-3 text-outline" /> {m.travel_distance_km.toFixed(1)} km ({m.travel_minutes} phút)</span>
+                  </div>
+                  
+                  {m.expected_available != null && (
+                    <p className="text-[11px] font-semibold text-success mb-1">Dự kiến còn {m.expected_available} chỗ khi bạn đến</p>
+                  )}
+                  <div className="space-y-1">
+                    {m.reasons.map((r, ri) => (
+                      <div key={ri} className="flex items-start gap-1.5 text-xs text-on-surface-variant">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
+                        <span>{r.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex sm:flex-col items-center sm:items-end justify-between pt-2 sm:pt-0 border-t sm:border-t-0 border-outline-variant/50">
+                  <div className="sm:text-right mb-0 sm:mb-2">
+                    <span className="text-[10px] font-bold text-on-surface-variant uppercase">Điểm phù hợp</span>
+                    <p className="text-xl font-black text-primary leading-tight">
+                      {Math.round(m.total_score)}
+                    </p>
+                  </div>
+                  
+                  <button 
+                    onClick={() => handleBook(m)}
+                    disabled={!!bookingLoading}
+                    className="py-2.5 px-5 rounded-full font-bold text-xs bg-primary hover:opacity-90 text-white transition-opacity flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {bookingLoading === m.garage_id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Giữ chỗ ngay'}
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+  )
+
+  if (phase !== 'input') {
+    return (
+      <MatchStage
+        origin={origin}
+        matches={matches}
+        candidates={candidates}
+        rejected={rejected}
+        stage={stage}
+        onSkip={skip}
+        onClose={onClose}
+      >
+        {error && <div className="mb-3 p-3 bg-error-container text-error rounded-2xl text-xs font-semibold">{error}</div>}
+        {resultsView}
+      </MatchStage>
+    )
   }
 
   return (
@@ -292,74 +373,6 @@ export function SmartBookingModal({ isOpen, onClose, defaultService = 'park_hour
             </div>
           )}
 
-          {phase === 'scanning' && (
-            <div className="flex flex-col items-center justify-center py-12 animate-in fade-in duration-300 text-center">
-              <div className="relative w-16 h-16 mb-4">
-                <div className="absolute inset-0 border-4 border-primary/20 rounded-full" />
-                <div className="absolute inset-0 border-4 border-primary rounded-full border-t-transparent animate-spin" />
-              </div>
-              <h3 className="text-base font-bold text-on-surface">
-                {loadingMsg}
-              </h3>
-              <p className="text-on-surface-variant text-xs mt-1">Hệ thống đang so sánh các bãi phù hợp...</p>
-            </div>
-          )}
-
-          {phase === 'results' && (
-            <div className="space-y-3">
-              {matches.length === 0 && <p className="text-center text-sm text-on-surface-variant py-8">Không tìm thấy bãi phù hợp. Hãy thử khu vực hoặc thời điểm khác.</p>}
-              {matches.map((m, i) => (
-                <Card key={m.garage_id} className={`p-4 rounded-2xl border transition-all ${i === 0 ? 'bg-primary-container/10 border-primary' : 'bg-surface border-outline-variant'}`}>
-                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        {i === 0 && (
-                          <span className="bg-primary text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded flex items-center gap-1">
-                            <Star className="w-3 h-3 fill-white" /> Phù hợp nhất
-                          </span>
-                        )}
-                        <h4 className="text-sm font-bold text-on-surface">{m.name}</h4>
-                      </div>
-                      <div className="flex items-center gap-2 text-[11px] font-semibold text-on-surface-variant mb-2">
-                        {m.tier > 0 ? <Stars value={m.tier} /> : <span>Chưa xếp hạng</span>}
-                        <span>•</span>
-                        <span className="flex items-center gap-1"><Navigation className="w-3 h-3 text-outline" /> {m.travel_distance_km.toFixed(1)} km ({m.travel_minutes} phút)</span>
-                      </div>
-                      
-                      {m.expected_available != null && (
-                        <p className="text-[11px] font-semibold text-success mb-1">Dự kiến còn {m.expected_available} chỗ khi bạn đến</p>
-                      )}
-                      <div className="space-y-1">
-                        {m.reasons.map((r, ri) => (
-                          <div key={ri} className="flex items-start gap-1.5 text-xs text-on-surface-variant">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
-                            <span>{r.text}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex sm:flex-col items-center sm:items-end justify-between pt-2 sm:pt-0 border-t sm:border-t-0 border-outline-variant/50">
-                      <div className="sm:text-right mb-0 sm:mb-2">
-                        <span className="text-[10px] font-bold text-on-surface-variant uppercase">Điểm phù hợp</span>
-                        <p className="text-xl font-black text-primary leading-tight">
-                          {Math.round(m.total_score)}
-                        </p>
-                      </div>
-                      
-                      <button 
-                        onClick={() => handleBook(m)}
-                        disabled={!!bookingLoading}
-                        className="py-2.5 px-5 rounded-full font-bold text-xs bg-primary hover:opacity-90 text-white transition-opacity flex items-center justify-center gap-1.5 shrink-0"
-                      >
-                        {bookingLoading === m.garage_id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Giữ chỗ ngay'}
-                      </button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>

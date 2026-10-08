@@ -10,6 +10,7 @@ from app.api.matching.matching_engine import find_best_garages
 from app.api.search_log.search_log_utils import log_search, update_search_action
 from app.api.auth.dependencies import get_current_user_optional
 from app.api.shared.common_utils import api_response
+from app.services.osm.osm_client import osm_client
 from app.api.shared.schemas import Operation, Resource
 from app.api.shared.tool.datetime_convert import get_current_time
 from app.services.osm.osm_client import LatLng
@@ -91,6 +92,14 @@ async def match_search(
 
     match_dicts = [_match_to_dict(m) for m in result["matches"]]
 
+    # Hình học tuyến đường cho Top (FE vẽ tuyến); lỗi OSRM -> đường thẳng
+    for md in match_dicts:
+        loc = md.get("location") or {}
+        if loc.get("lat") is not None and loc.get("lng") is not None:
+            md["route"] = await osm_client.get_route_path(
+                current_loc, LatLng(lat=loc["lat"], lng=loc["lng"]),
+            )
+
     # Log search (fire-and-forget — errors swallowed inside log_search)
     search_log_id = await log_search(
         customer_id=(current_user or {}).get("user_id") if current_user else None,
@@ -100,7 +109,7 @@ async def match_search(
         vehicle_type=input_data.vehicle_type or "",
         service_type_code=input_data.service_type_code,
         requested_time=requested_time,
-        matches=match_dicts,
+        matches=[{k: v for k, v in md.items() if k != "route"} for md in match_dicts],
         weights=result["weights"],
         context=result["context"],
     )
@@ -112,6 +121,8 @@ async def match_search(
             "session_id": session_id,
             "results_count": len(match_dicts),
             "matches": match_dicts,
+            "candidates": result.get("candidates", []),
+            "rejected": result.get("rejected", []),
             "context": result["context"],
             "weights": result["weights"],
         },
