@@ -100,6 +100,13 @@ async def match_search(
                 current_loc, LatLng(lat=loc["lat"], lng=loc["lng"]),
             )
 
+    # Record whether camera-to-route association can use actual OSRM geometry.
+    for md in match_dicts:
+        route = md.get('route')
+        loc = md.get('location') or {}
+        straight = [[current_loc.lat, current_loc.lng], [loc.get('lat'), loc.get('lng')]]
+        md['route_source'] = 'fallback' if not route or route == straight else 'osrm'
+
     # Log search (fire-and-forget — errors swallowed inside log_search)
     search_log_id = await log_search(
         customer_id=(current_user or {}).get("user_id") if current_user else None,
