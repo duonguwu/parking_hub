@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { SlidersHorizontal, List, Map as MapIcon, Crosshair, X, Search, Navigation } from 'lucide-react'
-import { customerApi, formatVnd, formatTime, LOT_TYPE_LABEL, type GarageCard, type LatLng, type LotType, type NearbyFilters } from '@/services/api'
+import { SlidersHorizontal, List, Map as MapIcon, Crosshair, X, Search, Navigation, Camera } from 'lucide-react'
+import { customerApi, trafficCameraApi, formatVnd, formatTime, LOT_TYPE_LABEL, type GarageCard, type LatLng, type LotType, type NearbyFilters } from '@/services/api'
 import { ParkingMap, MapLegend, HCM_CENTER } from '@/components/parking/ParkingMap'
 import { Stars, AvailabilityPill, BadgeList, EmptyState, Spinner } from '@/components/parking/ParkingBits'
 import { cn } from '@/services/utils'
@@ -121,6 +121,12 @@ export function CustomerMap() {
   const [showFilters, setShowFilters] = useState(false)
   const [mobileList, setMobileList] = useState(false)
   const [pending, setPending] = useState<LatLng | null>(null)
+  const [showTrafficCameras, setShowTrafficCameras] = useState(false)
+  const [cameraStatus, setCameraStatus] = useState('')
+  const [cameraAvailable, setCameraAvailable] = useState(false)
+  useEffect(() => {
+    trafficCameraApi.availability().then((data) => setCameraAvailable(data.enabled)).catch(() => setCameraAvailable(false))
+  }, [])
 
   const locate = () => navigator.geolocation?.getCurrentPosition((p) => {
     const ll = { lat: p.coords.latitude, lng: p.coords.longitude }
@@ -163,6 +169,7 @@ export function CustomerMap() {
         <ParkingMap
           garages={garages} selectedId={selected?.id} onSelect={select} center={point} searchPoint={point} flyTo={flyTo}
           onMapClick={(p) => setPending(p)}
+          showTrafficCameras={showTrafficCameras} onCameraStatus={setCameraStatus}
           renderPopup={(g) => (
             <div className="min-w-[180px]">
               <p className="font-bold text-sm">{g.name}</p>
@@ -185,6 +192,18 @@ export function CustomerMap() {
             <Navigation className="w-4 h-4" />
           </button>
         </div>
+
+        <button type="button" title={cameraAvailable ? 'Camera giao thông' : 'Camera giao thông chưa bật trên máy chủ'}
+          aria-label="Camera giao thông" aria-pressed={showTrafficCameras}
+          onClick={() => {
+            if (!cameraAvailable) { setCameraStatus('Camera giao thông chưa bật trên máy chủ. Hãy khởi động lại backend.'); return }
+            setShowTrafficCameras((v) => !v)
+            setCameraStatus('')
+          }}
+          className={cn('absolute top-16 right-3 z-[1000] h-10 w-10 rounded-full border flex items-center justify-center', showTrafficCameras ? 'bg-primary text-white border-primary' : 'bg-surface text-on-surface border-outline-variant')}>
+          <Camera className="w-4 h-4" />
+        </button>
+        {cameraStatus && <p role='status' className='absolute top-16 left-3 right-16 z-[1000] bg-surface border border-outline-variant rounded-lg p-2 text-xs text-on-surface-variant'>{cameraStatus}</p>}
 
         {pending && (
           <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] flex gap-1 bg-surface rounded-full shadow border border-outline-variant p-1">

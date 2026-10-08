@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { X, FastForward } from 'lucide-react'
 import { CARTO_TILE_URL } from '@/components/parking/ParkingMap'
+import { RouteCameraList } from '@/components/traffic-camera/RouteCameraList'
 import type { LatLng, MatchCandidatePin, MatchResult } from '@/services/api'
 import { type MatchStageName } from './useMatchChoreography'
 
@@ -143,12 +144,6 @@ export function MatchStage({ origin, matches, candidates, rejected, stage, onSki
     [matches, origin.lat, origin.lng],
   )
   const spread = useMemo(() => [...candidates, ...rejected].map((c) => c.location), [candidates, rejected])
-  const camPoint = routes[0] ? routes[0][Math.floor(routes[0].length / 2)] : null
-  const camIcon = useMemo(() => L.divIcon({
-    className: '', iconSize: [132, 110], iconAnchor: [66, 120],
-    html: '<div class="mc-cam"><div class="mc-cam-img">CAM</div><div class="mc-cam-txt">Camera dọc tuyến<br/><span style="font-weight:500;color:#6b7280">Ảnh minh họa</span></div></div>',
-  }), [])
-
   return (
     <div className="fixed inset-0 z-[100] bg-surface">
       <MapContainer center={[origin.lat, origin.lng]} zoom={14} zoomControl={false} className="w-full h-full">
@@ -163,7 +158,6 @@ export function MatchStage({ origin, matches, candidates, rejected, stage, onSki
             tone={s >= 5 ? (i === 0 ? 'win' : 'dim') : 'other'}
           />
         ))}
-        {stage === 'analyzing' && camPoint && <Marker position={camPoint} icon={camIcon} interactive={false} zIndexOffset={800} />}
         <StageCamera stage={stage} origin={origin} spread={spread} routes={routes} />
       </MapContainer>
 
@@ -189,6 +183,7 @@ export function MatchStage({ origin, matches, candidates, rejected, stage, onSki
       {stage === 'result' && (
         <div className="absolute z-[1000] inset-x-0 bottom-0 sm:inset-x-auto sm:right-4 sm:top-16 sm:bottom-4 sm:w-[400px] max-h-[62vh] sm:max-h-none bg-surface rounded-t-3xl sm:rounded-3xl shadow-2xl border border-outline-variant overflow-y-auto p-4 animate-in slide-in-from-bottom-6 duration-300">
           {children}
+          {matches[0] && <RouteCameraList match={matches[0]} />}
         </div>
       )}
     </div>
