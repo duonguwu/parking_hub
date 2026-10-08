@@ -1,11 +1,13 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath } from 'node:url'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const devApiTarget = loadEnv(mode, process.cwd(), 'VITE_DEV_API_TARGET').VITE_DEV_API_TARGET || 'http://localhost:8000'
+  return {
   plugins: [
     react(),
     tailwindcss(),
@@ -142,14 +144,18 @@ export default defineConfig({
   server: {
     allowedHosts: true,
     proxy: {
-      '/auth': { target: 'http://localhost:8000', changeOrigin: true },
-      '/customer': { target: 'http://localhost:8000', changeOrigin: true },
-      '/garage-portal': { target: 'http://localhost:8000', changeOrigin: true },
-      '/admin-portal': { target: 'http://localhost:8000', changeOrigin: true },
-      '/match': { target: 'http://localhost:8000', changeOrigin: true },
-      '/bookings': { target: 'http://localhost:8000', changeOrigin: true },
-      '/notifications': { target: 'http://localhost:8000', changeOrigin: true },
-      '/health': { target: 'http://localhost:8000', changeOrigin: true },
+      '/auth': { target: devApiTarget, changeOrigin: true },
+      '/customer': { target: devApiTarget, changeOrigin: true },
+      '/garage-portal': { target: devApiTarget, changeOrigin: true },
+      '/admin-portal': { target: devApiTarget, changeOrigin: true },
+      '/match': { target: devApiTarget, changeOrigin: true },
+      '/service-types': { target: devApiTarget, changeOrigin: true },
+      '/garage-services': { target: devApiTarget, changeOrigin: true },
+      '/garage': { target: devApiTarget, changeOrigin: true },
+      '/traffic-cameras': { target: devApiTarget, changeOrigin: true },
+      '/bookings': { target: devApiTarget, changeOrigin: true },
+      '/notifications': { target: devApiTarget, changeOrigin: true },
+      '/health': { target: devApiTarget, changeOrigin: true },
     },
   },
   preview: {
@@ -161,6 +167,9 @@ export default defineConfig({
       '/garage-portal': { target: 'http://localhost:8000', changeOrigin: true },
       '/admin-portal': { target: 'http://localhost:8000', changeOrigin: true },
       '/match': { target: 'http://localhost:8000', changeOrigin: true },
+      '/service-types': { target: 'http://localhost:8000', changeOrigin: true },
+      '/garage-services': { target: 'http://localhost:8000', changeOrigin: true },
+      '/garage': { target: 'http://localhost:8000', changeOrigin: true },
       '/bookings': { target: 'http://localhost:8000', changeOrigin: true },
       '/notifications': { target: 'http://localhost:8000', changeOrigin: true },
       '/health': { target: 'http://localhost:8000', changeOrigin: true },
@@ -178,6 +187,7 @@ export default defineConfig({
       },
     },
   },
+  }
 })
 
 
