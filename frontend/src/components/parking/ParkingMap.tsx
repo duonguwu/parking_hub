@@ -5,11 +5,12 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, CircleMar
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import type { ReactNode } from 'react'
+import { CameraLayer } from '@/components/traffic-camera/CameraLayer'
 import { AVAILABILITY_META, type GarageCard, type LatLng } from '@/services/api'
 
 export const HCM_CENTER: LatLng = { lat: 10.7769, lng: 106.7009 }
 
-// Key CARTO lấy từ env (prod cần key, dev bỏ trống vẫn chạy)
+// Bản đồ CARTO Voyager hiện có; dùng key từ môi trường nếu được cấp.
 const CARTO_BASEMAP_KEY = import.meta.env.VITE_CARTO_BASEMAP_KEY?.trim()
 export const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${
   CARTO_BASEMAP_KEY ? `?key=${encodeURIComponent(CARTO_BASEMAP_KEY)}` : ''
@@ -75,11 +76,13 @@ interface ParkingMapProps {
   flyTo?: LatLng | null
   fitToGarages?: boolean
   className?: string
+  showTrafficCameras?: boolean
+  onCameraStatus?: (message: string) => void
 }
 
 export function ParkingMap({
   garages, selectedId, onSelect, renderPopup, center = HCM_CENTER, zoom = 14,
-  searchPoint, onMapClick, flyTo, fitToGarages, className,
+  searchPoint, onMapClick, flyTo, fitToGarages, className, showTrafficCameras, onCameraStatus,
 }: ParkingMapProps) {
   const withPos = garages.filter((g) => g.position)
   return (
@@ -106,6 +109,7 @@ export function ParkingMap({
       {onMapClick && <ClickHandler onClick={onMapClick} />}
       <FlyTo target={flyTo ?? null} />
       {fitToGarages && <FitBounds points={withPos.map((g) => g.position!)} />}
+      {showTrafficCameras && onCameraStatus && <CameraLayer onStatus={onCameraStatus} />}
     </MapContainer>
   )
 }

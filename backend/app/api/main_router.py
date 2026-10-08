@@ -23,6 +23,7 @@ from app.api.garage_portal.garage_portal_views import garage_portal_router
 
 # Platform Admin
 from app.api.admin.admin_views import admin_router
+from app.api.traffic_camera.traffic_camera_views import traffic_camera_router
 
 main_router = APIRouter()
 
@@ -43,6 +44,7 @@ main_router.include_router(garage_service_router)
 main_router.include_router(booking_router)
 main_router.include_router(capacity_router)
 main_router.include_router(matching_router)
+main_router.include_router(traffic_camera_router)
 
 # ── Customer Portal (aggregated FE-facing endpoints) ──
 main_router.include_router(customer_router)

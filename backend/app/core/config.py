@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     WEATHER_CACHE_TTL_SECONDS: int = 900          # 15 min
     WEATHER_HTTP_TIMEOUT_SECONDS: float = 5.0
 
+    TRAFFIC_CAMERA_ENABLED: bool = False
+    TRAFFIC_CAMERA_POC_IMAGES_ENABLED: bool = False
+    TRAFFIC_CAMERA_HTTP_TIMEOUT_SECONDS: float = 5.0
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),

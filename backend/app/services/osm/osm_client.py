@@ -85,7 +85,7 @@ class OSMClient:
     async def _get_http(self) -> httpx.AsyncClient:
         if self._http is None or self._http.is_closed:
             self._http = httpx.AsyncClient(
-                timeout=settings.OSM_HTTP_TIMEOUT_SECONDS,
+                timeout=settings.OSM_HTTP_TIMEOUT_SECONDS, trust_env=False,
                 headers={"User-Agent": "ParkingHub/0.1 (backend)"},
             )
         return self._http

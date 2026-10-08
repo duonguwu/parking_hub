@@ -68,6 +68,7 @@ async function request<T>(path: string, fallback: string, options?: RequestInit)
   const res = await apiFetch(path, options)
   const json = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(errorText(json, fallback))
+  if (!Object.prototype.hasOwnProperty.call(json, 'data')) throw new Error(fallback)
   return json.data as T
 }
 
@@ -529,6 +530,18 @@ export interface MatchResult {
   trade_offs: { type: string; text: string }[]
   /** Danh sách [lat, lng] dọc tuyến từ vị trí tìm kiếm tới bãi. */
   route?: [number, number][]
+  route_source?: 'osrm' | 'fallback'
+}
+
+export interface TrafficCamera {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  district: string
+  snapshot_available: boolean
+  distance_to_route_m?: number
+  distance_from_start_m?: number
 }
 
 export interface MatchCandidatePin {
@@ -804,6 +817,28 @@ export const matchingApi = {
     must_have_amenities?: string[]
     top_k?: number
   }) => request<MatchSearchResponse>('/match/search', 'Không tìm được bãi phù hợp', send('POST', data)),
+}
+
+export const trafficCameraApi = {
+  availability: (signal?: AbortSignal) => request<{ enabled: boolean; images_enabled: boolean }>(
+    '/traffic-cameras/availability', 'Không kiểm tra được trạng thái camera', { signal },
+  ),
+  inViewport: (bounds: { west: number; south: number; east: number; north: number }, signal?: AbortSignal) =>
+    request<{ cameras: TrafficCamera[] }>(
+      '/traffic-cameras' + qs(bounds), 'Không tải được camera', { signal },
+    ).then((data) => data.cameras),
+  alongRoute: (route: [number, number][], signal?: AbortSignal) =>
+    request<{ cameras: TrafficCamera[] }>(
+      '/traffic-cameras/along-route', 'Không tải được camera dọc tuyến', { ...send('POST', { route }), signal },
+    ).then((data) => data.cameras),
+  snapshot: async (id: string, signal?: AbortSignal): Promise<Blob> => {
+    const response = await apiFetch(`/traffic-cameras/${encodeURIComponent(id)}/snapshot`, { signal })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(errorText(data, 'Không tải được ảnh camera'))
+    }
+    return response.blob()
+  },
 }
 
 // ── Garage owner (chủ bãi) API ─────────────────────────────────────────────

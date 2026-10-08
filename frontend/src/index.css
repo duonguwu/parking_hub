@@ -133,6 +133,32 @@ body {
 }
 
 /* ── Trình chiếu tìm bãi (MatchStage) ───────────────────────── */
+.traffic-camera-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+}
+
+.traffic-camera-marker__symbol {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-on-surface);
+  background: var(--color-surface);
+  border: 1px solid var(--color-outline);
+  border-radius: 6px;
+}
+
+.traffic-camera-marker:hover .traffic-camera-marker__symbol,
+.traffic-camera-marker:focus .traffic-camera-marker__symbol {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
 .mc-user { position: relative; width: 18px; height: 18px; }
 .mc-user::before, .mc-user::after {
   content: ''; position: absolute; inset: 0; border-radius: 9999px; background: #3b82f6;
